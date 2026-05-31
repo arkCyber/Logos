@@ -1,0 +1,38 @@
+# Spreadsheet Service Configuration
+# Aerospace-grade configuration with validation
+
+[server]
+host = "127.0.0.1"
+port = 8080
+# workers = 4  # Optional: number of worker threads
+
+[database]
+url = "sqlite:./data/spreadsheet.db"
+max_connections = 10
+min_connections = 2
+connection_timeout = 30  # seconds
+idle_timeout = 600      # seconds
+max_lifetime = 1800     # seconds
+
+[logging]
+level = "info"  # trace, debug, info, warn, error
+format = "json"  # json, pretty
+# file = "/var/log/spreadsheet-service.log"  # Optional: log file path
+
+[security]
+jwt_secret = "change-me-in-production-use-at-least-32-characters"
+jwt_expiration = 86400  # seconds (24 hours)
+bcrypt_cost = 12
+enable_cors = true
+allowed_origins = ["*"]  # In production, specify exact origins
+
+[excel]
+max_file_size = 10485760  # 10MB in bytes
+max_rows = 1048576        # Excel max rows
+max_columns = 16384       # Excel max columns
+temp_dir = "./temp"
+
+[rate_limit]
+enabled = true
+requests_per_second = 100
+burst_size = 200

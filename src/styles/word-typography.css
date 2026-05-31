@@ -1,0 +1,252 @@
+/**
+ * Microsoft Word 2019/2021 字体系统
+ * 基于 Segoe UI 和 Calibri 字体族
+ */
+
+:root {
+  /* ==================== 字体族 ==================== */
+  /* UI 界面字体 (Ribbon, 菜单, 对话框等) */
+  --word-font-ui:
+    'Segoe UI', 'Microsoft YaHei UI', '微软雅黑', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* 文档内容字体 (编辑器内) */
+  --word-font-document: 'Calibri', 'Microsoft YaHei', '微软雅黑', 'Segoe UI', sans-serif;
+
+  /* 等宽字体 (代码块) */
+  --word-font-mono: 'Consolas', 'Courier New', 'Microsoft YaHei', monospace;
+
+  /* ==================== 字号 ==================== */
+  /* UI 元素字号 */
+  --word-font-size-ui: 13px;
+  --word-font-size-ui-large: 14px;
+  --word-font-size-ui-small: 12px;
+
+  /* Ribbon 字号 */
+  --word-font-size-ribbon-tab: 13px;
+  --word-font-size-ribbon-button: 12px;
+  --word-font-size-ribbon-label: 12px;
+  --word-font-size-ribbon-group: 12px;
+
+  /* 状态栏字号 */
+  --word-font-size-statusbar: 12px;
+
+  /* 对话框字号 */
+  --word-font-size-dialog-title: 14px;
+  --word-font-size-dialog-body: 13px;
+  --word-font-size-dialog-button: 13px;
+
+  /* 工具提示字号 */
+  --word-font-size-tooltip: 12px;
+
+  /* 文档内容字号 */
+  --word-font-size-document: 11pt;
+  --word-font-size-h1: 16pt;
+  --word-font-size-h2: 13pt;
+  --word-font-size-h3: 11pt;
+
+  /* ==================== 字重 ==================== */
+  --word-font-weight-normal: 500;
+  --word-font-weight-medium: 500;
+  --word-font-weight-semibold: 500;
+  --word-font-weight-bold: 500;
+
+  /* ==================== 行高 ==================== */
+  --word-line-height-ui: 1.4;
+  --word-line-height-document: 1.15;
+  --word-line-height-compact: 1.2;
+  --word-line-height-relaxed: 1.6;
+
+  /* ==================== 字间距 ==================== */
+  --word-letter-spacing-normal: normal;
+  --word-letter-spacing-tight: -0.01em;
+  --word-letter-spacing-wide: 0.02em;
+}
+
+/* ==================== 全局字体应用 ==================== */
+* {
+  font-family: var(--word-font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ui);
+  line-height: var(--word-line-height-ui);
+  color: var(--word-text-primary);
+  font-weight: var(--word-font-weight-medium);
+}
+
+/* ==================== Ribbon 字体 ==================== */
+.ribbon-tabs,
+.ribbon-tab {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ribbon-tab);
+  font-weight: var(--word-font-weight-medium);
+}
+
+.ribbon-tab.active {
+  font-weight: var(--word-font-weight-medium);
+}
+
+.ribbon-button,
+.ribbon-button-large,
+.ribbon-button-small {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ribbon-button);
+  font-weight: var(--word-font-weight-medium);
+}
+
+.group-label {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ribbon-group);
+  font-weight: var(--word-font-weight-medium);
+  color: var(--word-text-secondary);
+}
+
+/* ==================== 状态栏字体 ==================== */
+.status-bar {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-statusbar);
+  font-weight: var(--word-font-weight-medium);
+  line-height: var(--word-line-height-compact);
+}
+
+/* ==================== 对话框字体 ==================== */
+.dialog-header {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-dialog-title);
+  font-weight: var(--word-font-weight-medium);
+}
+
+.dialog-body {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-dialog-body);
+  font-weight: var(--word-font-weight-medium);
+  line-height: var(--word-line-height-ui);
+}
+
+.dialog-button {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-dialog-button);
+  font-weight: var(--word-font-weight-medium);
+}
+
+/* ==================== 工具提示字体 ==================== */
+.tooltip {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-tooltip);
+  font-weight: var(--word-font-weight-medium);
+  line-height: var(--word-line-height-compact);
+}
+
+/* ==================== 文档编辑器字体 ==================== */
+.ProseMirror {
+  font-family: var(--word-font-document);
+  font-size: var(--word-font-size-document);
+  line-height: var(--word-line-height-document);
+  color: var(--word-text-primary);
+}
+
+.ProseMirror h1 {
+  font-size: var(--word-font-size-h1);
+  font-weight: var(--word-font-weight-bold);
+  line-height: 1.2;
+}
+
+.ProseMirror h2 {
+  font-size: var(--word-font-size-h2);
+  font-weight: var(--word-font-weight-bold);
+  line-height: 1.2;
+}
+
+.ProseMirror h3 {
+  font-size: var(--word-font-size-h3);
+  font-weight: var(--word-font-weight-bold);
+  line-height: 1.2;
+}
+
+.ProseMirror code,
+.ProseMirror pre {
+  font-family: var(--word-font-mono);
+}
+
+/* ==================== 输入控件字体 ==================== */
+input,
+textarea,
+select,
+button {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ui);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--word-input-placeholder);
+  font-style: italic;
+}
+
+/* ==================== 下拉菜单字体 ==================== */
+.dropdown-menu,
+.context-menu {
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ui);
+  line-height: var(--word-line-height-compact);
+}
+
+/* ==================== 特殊文本样式 ==================== */
+.text-primary {
+  color: var(--word-text-primary);
+}
+
+.text-secondary {
+  color: var(--word-text-secondary);
+}
+
+.text-tertiary {
+  color: var(--word-text-tertiary);
+}
+
+.text-disabled {
+  color: var(--word-text-disabled);
+}
+
+.text-link {
+  color: var(--word-text-link);
+  cursor: pointer;
+}
+
+.text-link:hover {
+  color: var(--word-text-link-hover);
+  text-decoration: underline;
+}
+
+/* ==================== 字重辅助类 ==================== */
+.font-normal {
+  font-weight: var(--word-font-weight-normal);
+}
+
+.font-medium {
+  font-weight: var(--word-font-weight-medium);
+}
+
+.font-semibold {
+  font-weight: var(--word-font-weight-semibold);
+}
+
+.font-bold {
+  font-weight: var(--word-font-weight-bold);
+}
+
+/* ==================== 字号辅助类 ==================== */
+.text-xs {
+  font-size: var(--word-font-size-ui-small);
+}
+
+.text-sm {
+  font-size: var(--word-font-size-ui);
+}
+
+.text-base {
+  font-size: var(--word-font-size-ui-large);
+}

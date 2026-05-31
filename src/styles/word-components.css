@@ -1,0 +1,1203 @@
+/**
+ * Microsoft Word 2019/2021 UI 组件样式
+ * 包括状态栏、对话框、编辑器等
+ */
+
+/* ==================== 状态栏 ==================== */
+.status-bar {
+  height: 22px;
+  background: var(--word-statusbar-bg);
+  border-top: 1px solid var(--word-statusbar-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 12px;
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-statusbar);
+  color: var(--word-statusbar-text);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-item {
+  padding: 0 8px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.1s ease;
+}
+
+.status-item:hover {
+  background: var(--word-statusbar-hover);
+}
+
+.status-separator {
+  color: var(--word-divider);
+  user-select: none;
+}
+
+/* 缩放控件 */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-out,
+.zoom-in {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: var(--word-button-bg);
+  border: 1px solid var(--word-button-border);
+  border-radius: 2px;
+  color: var(--word-text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: var(--word-font-weight-medium);
+  transition: all 0.1s ease;
+}
+
+.zoom-out:hover,
+.zoom-in:hover {
+  background: var(--word-button-hover);
+  border-color: var(--word-button-border-hover);
+}
+
+.zoom-slider {
+  width: 100px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--word-divider);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--word-accent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.zoom-slider::-webkit-slider-thumb:hover {
+  background: var(--word-accent-hover);
+  transform: scale(1.1);
+}
+
+.zoom-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--word-accent);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.zoom-slider::-moz-range-thumb:hover {
+  background: var(--word-accent-hover);
+  transform: scale(1.1);
+}
+
+.zoom-percent {
+  min-width: 40px;
+  text-align: center;
+  font-size: var(--word-font-size-statusbar);
+}
+
+/* ==================== 对话框 ==================== */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: overlayFadeIn 0.15s ease-out;
+}
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.dialog {
+  background: var(--word-dialog-bg);
+  border: 1px solid var(--word-dialog-border);
+  border-radius: 0;
+  box-shadow: var(--word-shadow-xl);
+  min-width: 400px;
+  max-width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  animation: dialogSlideIn 0.2s ease-out;
+}
+
+@keyframes dialogSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dialog-header {
+  background: var(--word-dialog-header-bg);
+  color: var(--word-dialog-header-text);
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-dialog-title);
+  font-weight: var(--word-font-weight-medium);
+}
+
+.dialog-header h2,
+.dialog-header h3 {
+  margin: 0;
+  font-size: var(--word-font-size-dialog-title);
+  font-weight: var(--word-font-weight-medium);
+}
+
+.dialog-close-icon {
+  background: none;
+  border: none;
+  color: var(--word-dialog-header-text);
+  font-size: 20px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.1s ease;
+}
+
+.dialog-close-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dialog-body {
+  padding: 16px;
+  overflow-y: auto;
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-dialog-body);
+  line-height: var(--word-line-height-ui);
+}
+
+.dialog-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--word-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-button {
+  height: 28px;
+  padding: 0 16px;
+  border: 1px solid var(--word-border-strong);
+  border-radius: 2px;
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-dialog-button);
+  font-weight: var(--word-font-weight-medium);
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.dialog-button.primary {
+  background: var(--word-accent);
+  border-color: var(--word-accent);
+  color: var(--word-text-white);
+}
+
+.dialog-button.primary:hover {
+  background: var(--word-accent-hover);
+  border-color: var(--word-accent-hover);
+}
+
+.dialog-button.primary:active {
+  background: var(--word-accent-pressed);
+  border-color: var(--word-accent-pressed);
+}
+
+.dialog-button.secondary {
+  background: var(--word-bg-page);
+  border-color: var(--word-border-strong);
+  color: var(--word-text-primary);
+}
+
+.dialog-button.secondary:hover {
+  background: var(--word-bg-hover);
+}
+
+.dialog-button.secondary:active {
+  background: var(--word-button-active);
+}
+
+/* ==================== 对话框增强动画 ==================== */
+@keyframes dialogBackdropFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialogScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes dialogSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dialog-overlay {
+  animation: dialogBackdropFadeIn 0.2s ease-out;
+}
+
+.dialog {
+  animation: dialogScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dialog.slide-up {
+  animation: dialogSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ==================== 对话框尺寸变体 ==================== */
+.dialog.sm {
+  min-width: 300px;
+  max-width: 400px;
+}
+
+.dialog.md {
+  min-width: 400px;
+  max-width: 600px;
+}
+
+.dialog.lg {
+  min-width: 600px;
+  max-width: 800px;
+}
+
+.dialog.xl {
+  min-width: 800px;
+  max-width: 1000px;
+}
+
+.dialog.full {
+  min-width: 90vw;
+  max-width: 95vw;
+  max-height: 90vh;
+}
+
+/* ==================== 对话框标题栏增强 ==================== */
+.dialog-header {
+  position: relative;
+  overflow: hidden;
+}
+
+.dialog-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--word-accent), var(--word-accent-hover));
+}
+
+.dialog-header h2,
+.dialog-header h3 {
+  position: relative;
+  z-index: 1;
+}
+
+/* ==================== 对话框内容滚动 ==================== */
+.dialog-body {
+  position: relative;
+}
+
+.dialog-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dialog-body::-webkit-scrollbar-track {
+  background: var(--word-scrollbar-bg);
+  border-radius: 4px;
+}
+
+.dialog-body::-webkit-scrollbar-thumb {
+  background: var(--word-scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.dialog-body::-webkit-scrollbar-thumb:hover {
+  background: var(--word-scrollbar-thumb-hover);
+}
+
+/* ==================== 对话框按钮组 ==================== */
+.dialog-footer {
+  position: relative;
+}
+
+.dialog-footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--word-divider), transparent);
+}
+
+/* ==================== 对话框拖拽手柄 ==================== */
+.dialog-header {
+  cursor: move;
+  user-select: none;
+}
+
+.dialog-header .dialog-close-icon {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ==================== 对话框无障碍增强 ==================== */
+.dialog-overlay:focus-within {
+  outline: 2px solid var(--word-accent);
+  outline-offset: 2px;
+}
+
+.dialog:focus {
+  outline: none;
+}
+
+.dialog:focus-visible {
+  outline: 2px solid var(--word-accent);
+  outline-offset: 2px;
+}
+
+/* ==================== 对话框加载状态 ==================== */
+.dialog.loading {
+  pointer-events: none;
+}
+
+.dialog.loading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.dark .dialog.loading::after {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* ==================== 对话框警告/错误状态 ==================== */
+.dialog.warning .dialog-header {
+  background: var(--word-warning);
+}
+
+.dialog.error .dialog-header {
+  background: var(--word-error);
+}
+
+.dialog.success .dialog-header {
+  background: var(--word-success);
+}
+
+.dialog.info .dialog-header {
+  background: var(--word-info);
+}
+
+/* ==================== 输入控件 ==================== */
+input[type='text'],
+input[type='number'],
+input[type='email'],
+input[type='password'],
+input[type='search'],
+textarea {
+  padding: 4px 8px;
+  background: var(--word-input-bg);
+  border: 1px solid var(--word-input-border);
+  border-radius: 2px;
+  color: var(--word-input-text);
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ui);
+  line-height: var(--word-line-height-compact);
+  transition: all 0.1s ease;
+}
+
+input[type='text']:hover,
+input[type='number']:hover,
+input[type='email']:hover,
+input[type='password']:hover,
+input[type='search']:hover,
+textarea:hover {
+  border-color: var(--word-input-border-hover);
+}
+
+input[type='text']:focus,
+input[type='number']:focus,
+input[type='email']:focus,
+input[type='password']:focus,
+input[type='search']:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--word-input-border-focus);
+  box-shadow: 0 0 0 1px var(--word-input-border-focus);
+}
+
+input[type='text']::placeholder,
+input[type='number']::placeholder,
+input[type='email']::placeholder,
+input[type='password']::placeholder,
+input[type='search']::placeholder,
+textarea::placeholder {
+  color: var(--word-input-placeholder);
+}
+
+/* ==================== 编辑器页面容器 ==================== */
+.editor-container-wrapper {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background: var(--word-bg-canvas);
+  min-height: 0;
+  position: relative;
+}
+
+.page-container {
+  background: var(--word-bg-page);
+  box-shadow: var(--word-shadow-page);
+  margin: 20px auto;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  cursor: default;
+}
+
+.page-container:hover {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.1), 0 12px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* A4 页面尺寸 (210mm × 297mm at 96 DPI) */
+.page-container.a4 {
+  width: 794px;
+  min-height: 1123px;
+}
+
+/* 页面尺寸变体 */
+.page-container.letter {
+  width: 816px;
+  min-height: 1056px;
+}
+
+.page-container.legal {
+  width: 816px;
+  min-height: 1344px;
+}
+
+.page-container.a3 {
+  width: 1123px;
+  min-height: 1587px;
+}
+
+.page-container.a5 {
+  width: 559px;
+  min-height: 794px;
+}
+
+/* 页面边距视觉效果 */
+.page-margins {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.02);
+  pointer-events: none;
+  transition: background 0.2s ease;
+}
+
+.page-container:hover .page-margins {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.dark .page-margins {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dark .page-container:hover .page-margins {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.page-margin-top {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+}
+
+.page-margin-bottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+}
+
+.page-margin-left {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 50px;
+}
+
+.page-margin-right {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 50px;
+}
+
+/* ==================== 页面网格背景 ==================== */
+.page-container.grid-bg {
+  background-image: 
+    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.dark .page-container.grid-bg {
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+/* ==================== 页面线条背景 ==================== */
+.page-container.lines-bg {
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 24px,
+    rgba(0, 0, 0, 0.03) 24px,
+    rgba(0, 0, 0, 0.03) 25px
+  );
+}
+
+.dark .page-container.lines-bg {
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 24px,
+    rgba(255, 255, 255, 0.03) 24px,
+    rgba(255, 255, 255, 0.03) 25px
+  );
+}
+
+/* ==================== 页面聚焦效果 ==================== */
+.page-container:focus-within {
+  box-shadow: 0 0 0 2px var(--word-accent), var(--word-shadow-page);
+}
+
+/* ==================== 页面过渡动画 ==================== */
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-container {
+  animation: pageFadeIn 0.3s ease-out;
+}
+
+/* ==================== 页面缩放效果 ==================== */
+.page-container.zoom-25 {
+  transform: scale(0.25);
+}
+
+.page-container.zoom-50 {
+  transform: scale(0.5);
+}
+
+.page-container.zoom-75 {
+  transform: scale(0.75);
+}
+
+.page-container.zoom-100 {
+  transform: scale(1);
+}
+
+.page-container.zoom-125 {
+  transform: scale(1.25);
+}
+
+.page-container.zoom-150 {
+  transform: scale(1.5);
+}
+
+.page-container.zoom-200 {
+  transform: scale(2);
+}
+
+.page-container.zoom-400 {
+  transform: scale(4);
+}
+
+/* ==================== 页面打印预览模式 ==================== */
+.page-container.print-mode {
+  box-shadow: none;
+  margin: 0;
+  border: 1px solid var(--word-border);
+}
+
+/* ==================== 页面水印 ==================== */
+.page-container.watermark::before {
+  content: attr(data-watermark);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 48px;
+  color: rgba(0, 0, 0, 0.1);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dark .page-container.watermark::before {
+  color: rgba(255, 255, 255, 0.1);
+}
+
+/* ==================== 标尺 ==================== */
+.ruler {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(to bottom, #f9fafb 0%, #f3f4f6 100%);
+}
+
+.horizontal-ruler {
+  height: 28px;
+  border-bottom: 1px solid var(--word-border);
+}
+
+.vertical-ruler {
+  width: 28px;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-right: 1px solid var(--word-border);
+  z-index: 10;
+  background: linear-gradient(to right, #f9fafb 0%, #f3f4f6 100%);
+}
+
+.ruler-marks {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.ruler-mark {
+  position: absolute;
+  width: 1px;
+  background: var(--word-text-tertiary);
+}
+
+.ruler-mark.major {
+  height: 14px;
+  background: var(--word-text-secondary);
+}
+
+.ruler-mark.medium {
+  height: 10px;
+}
+
+.ruler-mark:not(.major):not(.medium) {
+  height: 6px;
+}
+
+.ruler-number {
+  position: absolute;
+  top: 16px;
+  left: -6px;
+  font-size: 8px;
+  color: var(--word-text-secondary);
+  font-family: var(--word-font-ui);
+}
+
+/* ==================== 下拉菜单 ==================== */
+.dropdown-menu {
+  background: var(--word-dropdown-bg);
+  border: 1px solid var(--word-dropdown-border);
+  border-radius: 2px;
+  box-shadow: var(--word-shadow-lg);
+  padding: 4px 0;
+  min-width: 180px;
+  z-index: 1001;
+}
+
+.dropdown-item {
+  padding: 6px 12px;
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ui);
+  color: var(--word-text-primary);
+  cursor: pointer;
+  transition: background 0.1s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dropdown-item:hover {
+  background: var(--word-dropdown-hover);
+}
+
+.dropdown-item.selected {
+  background: var(--word-dropdown-selected);
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--word-divider);
+  margin: 4px 0;
+}
+
+/* ==================== 工具提示 ==================== */
+.tooltip {
+  position: absolute;
+  background: var(--word-tooltip-bg);
+  border: 1px solid var(--word-tooltip-border);
+  border-radius: 2px;
+  box-shadow: var(--word-shadow-md);
+  padding: 6px 8px;
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-tooltip);
+  color: var(--word-tooltip-text);
+  z-index: 2000;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: tooltipFadeIn 0.15s ease-out;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==================== 滚动条样式 ==================== */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--word-scrollbar-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--word-scrollbar-thumb);
+  border-radius: 6px;
+  border: 2px solid var(--word-scrollbar-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--word-scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--word-scrollbar-bg);
+}
+
+/* ==================== 加载动画 ==================== */
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--word-border);
+  border-top-color: var(--word-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ==================== 通知/消息 ==================== */
+.notification {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background: var(--word-bg-page);
+  border: 1px solid var(--word-border);
+  border-radius: 2px;
+  box-shadow: var(--word-shadow-lg);
+  padding: 12px 16px;
+  min-width: 300px;
+  max-width: 400px;
+  z-index: 2000;
+  animation: notificationSlideIn 0.2s ease-out;
+}
+
+@keyframes notificationSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.notification.error {
+  border-left: 4px solid var(--word-error);
+  background: var(--word-error-bg);
+}
+
+.notification.warning {
+  border-left: 4px solid var(--word-warning);
+  background: var(--word-warning-bg);
+}
+
+.notification.success {
+  border-left: 4px solid var(--word-success);
+  background: var(--word-success-bg);
+}
+
+.notification.info {
+  border-left: 4px solid var(--word-info);
+  background: var(--word-info-bg);
+}
+
+/* ==================== 增强按钮样式 ==================== */
+.btn {
+  height: 28px;
+  padding: 0 16px;
+  border: 1px solid var(--word-border-strong);
+  border-radius: 2px;
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ui);
+  font-weight: var(--word-font-weight-medium);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--word-accent);
+  border-color: var(--word-accent);
+  color: var(--word-text-white);
+}
+
+.btn-primary:hover {
+  background: var(--word-accent-hover);
+  border-color: var(--word-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--word-shadow-sm);
+}
+
+.btn-primary:active {
+  background: var(--word-accent-pressed);
+  border-color: var(--word-accent-pressed);
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-secondary {
+  background: var(--word-bg-page);
+  border-color: var(--word-border-strong);
+  color: var(--word-text-primary);
+}
+
+.btn-secondary:hover {
+  background: var(--word-bg-hover);
+  border-color: var(--word-border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--word-shadow-sm);
+}
+
+.btn-secondary:active {
+  background: var(--word-button-active);
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--word-text-primary);
+}
+
+.btn-ghost:hover {
+  background: var(--word-bg-hover);
+  border-color: var(--word-border);
+}
+
+.btn-ghost:active {
+  background: var(--word-button-active);
+}
+
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  min-width: 28px;
+}
+
+.btn-sm {
+  height: 24px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.btn-sm.btn-icon {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+}
+
+.btn-lg {
+  height: 32px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+.btn-lg.btn-icon {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+}
+
+.btn:disabled {
+  background: var(--word-button-disabled-bg);
+  border-color: var(--word-border);
+  color: var(--word-button-disabled-text);
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ==================== 增强输入控件样式 ==================== */
+.input {
+  padding: 6px 10px;
+  background: var(--word-input-bg);
+  border: 1px solid var(--word-input-border);
+  border-radius: 2px;
+  color: var(--word-input-text);
+  font-family: var(--word-font-ui);
+  font-size: var(--word-font-size-ui);
+  line-height: var(--word-line-height-compact);
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.input:hover {
+  border-color: var(--word-input-border-hover);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--word-input-border-focus);
+  box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
+}
+
+.input::placeholder {
+  color: var(--word-input-placeholder);
+}
+
+.input-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.input-lg {
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.input-group {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.input-group .input {
+  border-radius: 2px 0 0 2px;
+}
+
+.input-group .input:first-child {
+  border-radius: 2px 0 0 2px;
+}
+
+.input-group .input:last-child {
+  border-radius: 0 2px 2px 0;
+}
+
+.input-group .btn {
+  border-radius: 0 2px 2px 0;
+  border-left: none;
+}
+
+.input-group .btn:first-child {
+  border-radius: 2px 0 0 2px;
+  border-right: none;
+}
+
+/* ==================== 徽章样式 ==================== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: var(--word-font-weight-medium);
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.badge-primary {
+  background: var(--word-accent);
+  color: var(--word-text-white);
+}
+
+.badge-secondary {
+  background: var(--word-bg-panel);
+  color: var(--word-text-primary);
+  border: 1px solid var(--word-border);
+}
+
+.badge-success {
+  background: var(--word-success);
+  color: var(--word-text-white);
+}
+
+.badge-warning {
+  background: var(--word-warning);
+  color: var(--word-text-white);
+}
+
+.badge-error {
+  background: var(--word-error);
+  color: var(--word-text-white);
+}
+
+/* ==================== 卡片样式 ==================== */
+.card {
+  background: var(--word-bg-page);
+  border: 1px solid var(--word-border);
+  border-radius: 4px;
+  box-shadow: var(--word-shadow-sm);
+  overflow: hidden;
+}
+
+.card-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--word-border);
+  font-weight: var(--word-font-weight-medium);
+  font-size: var(--word-font-size-ui);
+}
+
+.card-body {
+  padding: 16px;
+}
+
+.card-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--word-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.card-hover:hover {
+  box-shadow: var(--word-shadow-md);
+  transform: translateY(-2px);
+  transition: all 0.2s ease;
+}
+
+/* ==================== 分隔线样式 ==================== */
+.divider {
+  height: 1px;
+  background: var(--word-divider);
+  margin: 12px 0;
+}
+
+.divider-vertical {
+  width: 1px;
+  height: 100%;
+  background: var(--word-divider);
+  margin: 0 12px;
+}
+
+.divider-dashed {
+  border-style: dashed;
+}
+
+.divider-thick {
+  height: 2px;
+}

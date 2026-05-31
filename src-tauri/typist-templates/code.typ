@@ -1,0 +1,7 @@
+= {{title}}
+
+{{description}}
+
+```typst
+{{code}}
+```

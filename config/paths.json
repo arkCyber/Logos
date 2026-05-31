@@ -1,0 +1,25 @@
+{
+  "documents": {
+    "text": "documents/text",
+    "spreadsheets": "documents/spreadsheets",
+    "presentations": "documents/presentations",
+    "templates": "documents/templates"
+  },
+  "exports": {
+    "pdf": "exports/pdf",
+    "svg": "exports/svg",
+    "png": "exports/png"
+  },
+  "assets": {
+    "images": "assets/images",
+    "fonts": "assets/fonts",
+    "icons": "assets/icons"
+  },
+  "system": {
+    "cache": "cache",
+    "backups": "backups",
+    "autosave": "autosave",
+    "config": "config",
+    "logs": "logs"
+  }
+}

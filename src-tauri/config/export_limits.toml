@@ -1,0 +1,356 @@
+# Export Service Configuration
+# Controls limits for document export operations
+
+[limits]
+# Maximum input content size in bytes (default: 500MB for professional use)
+max_content_length = 524288000
+
+# Maximum output file size in bytes (default: 1GB for professional use)
+max_output_size = 1073741824
+
+# Maximum metadata field length in characters (default: 10000)
+max_metadata_length = 10000
+
+[typst]
+# Typst rendering configuration
+
+[typst.cache]
+# Maximum number of cached Typst renderings
+max_entries = 100
+
+# Typst quality level: "standard", "high", or "aerospace"
+default_quality = "standard"
+
+[pdf_conversion]
+# PDF to Office format conversion configuration
+
+# Maximum PDF file size for conversion in bytes (default: 500MB)
+max_pdf_size = 524288000
+
+# Conversion timeout in seconds (default: 300 seconds = 5 minutes)
+conversion_timeout_seconds = 300
+
+[docx]
+# DOCX export configuration
+
+# Maximum HTML content length in bytes (default: 50MB)
+max_html_length = 52428800
+
+# Maximum Markdown content length in bytes (default: 50MB)
+max_markdown_length = 52428800
+
+# Maximum paragraph count (default: 10000)
+max_paragraph_count = 10000
+
+# Maximum table count (default: 1000)
+max_table_count = 1000
+
+# Maximum image count (default: 500)
+max_image_count = 500
+
+[pptx]
+# PPTX export configuration
+
+# Maximum HTML content length in bytes (default: 100MB)
+max_html_length = 104857600
+
+# Maximum Markdown content length in bytes (default: 100MB)
+max_markdown_length = 104857600
+
+# Maximum slide count (default: 1000)
+max_slide_count = 1000
+
+# Maximum output file size in bytes (default: 500MB)
+max_output_size = 524288000
+
+[pptx.media]
+# PPTX media configuration
+
+# Maximum audio size in MB (default: 100MB)
+max_audio_size_mb = 100
+
+# Maximum video size in MB (default: 500MB)
+max_video_size_mb = 500
+
+# Maximum media duration in seconds (default: 3600 = 1 hour)
+max_duration_seconds = 3600
+
+[epub]
+# EPUB export configuration
+
+# Maximum HTML content length in bytes (default: 50MB)
+max_html_length = 52428800
+
+# Maximum Markdown content length in bytes (default: 50MB)
+max_markdown_length = 52428800
+
+# Maximum chapter count (default: 1000)
+max_chapter_count = 1000
+
+# Maximum title length in characters (default: 500)
+max_title_length = 500
+
+[odt]
+# ODT export configuration
+
+# Maximum HTML content length in bytes (default: 50MB)
+max_html_length = 52428800
+
+# Maximum Markdown content length in bytes (default: 50MB)
+max_markdown_length = 52428800
+
+# Maximum paragraph count (default: 10000)
+max_paragraph_count = 10000
+
+# Maximum output file size in bytes (default: 100MB)
+max_output_size = 104857600
+
+[rtf]
+# RTF export configuration
+
+# Maximum HTML content length in bytes (default: 50MB)
+max_html_length = 52428800
+
+# Maximum Markdown content length in bytes (default: 50MB)
+max_markdown_length = 52428800
+
+# Maximum paragraph count (default: 10000)
+max_paragraph_count = 10000
+
+# Maximum output file size in bytes (default: 100MB)
+max_output_size = 104857600
+
+[png]
+# PNG export configuration
+
+# Maximum HTML content length in bytes (default: 100MB)
+max_html_length = 104857600
+
+# Maximum text content length in bytes (default: 100MB)
+max_text_length = 104857600
+
+# Maximum output file size in bytes (default: 100MB)
+max_output_size = 104857600
+
+[svg]
+# SVG export configuration
+
+# Maximum HTML content length in bytes (default: 50MB)
+max_html_length = 52428800
+
+# Maximum element count (default: 10000)
+max_element_count = 10000
+
+# Maximum output file size in bytes (default: 100MB)
+max_output_size = 104857600
+
+[markdown]
+# Markdown conversion configuration
+
+# Maximum input size in bytes (default: 100MB)
+max_input_size = 104857600
+
+# Maximum recursion depth (default: 100)
+max_recursion_depth = 100
+
+[ai]
+# AI service configuration
+
+# Maximum prompt length in characters (default: 10000)
+max_prompt_length = 10000
+
+# Maximum text length in characters (default: 100000)
+max_text_length = 100000
+
+# Maximum stream chunks (default: 10000)
+max_stream_chunks = 10000
+
+[chart]
+# Chart service configuration
+
+# Maximum data points (default: 1000)
+max_data_points = 1000
+
+# Maximum chart width in pixels (default: 10000)
+max_chart_width = 10000
+
+# Maximum chart height in pixels (default: 10000)
+max_chart_height = 10000
+
+# Maximum title length in characters (default: 500)
+max_title_length = 500
+
+# Maximum label length in characters (default: 100)
+max_label_length = 100
+
+[ocr]
+# OCR service configuration
+
+# Maximum image size in bytes (default: 500MB)
+max_image_size = 524288000
+
+# Maximum image dimension in pixels (default: 32768)
+max_image_dimension = 32768
+
+# Minimum image dimension in pixels (default: 1)
+min_image_dimension = 1
+
+# Maximum rotation angle in degrees (default: 360)
+max_rotation_angle = 360
+
+[mail_merge]
+# Mail merge service configuration
+
+# Maximum file size in bytes (default: 500MB)
+max_file_size = 524288000
+
+# Maximum number of records (default: 10000)
+max_records = 10000
+
+# Maximum fields per record (default: 500)
+max_fields_per_record = 500
+
+# Maximum batch size (default: 1000)
+max_batch_size = 1000
+
+# Maximum field name length in characters (default: 200)
+max_field_name_length = 200
+
+# Maximum field value length in characters (default: 10000)
+max_field_value_length = 10000
+
+[collaboration]
+# Collaboration service configuration
+
+# Maximum content length in bytes (default: 100MB)
+max_content_length = 104857600
+
+# Maximum operation content length in characters (default: 10000)
+max_operation_content_length = 10000
+
+# Maximum number of operations (default: 100000)
+max_operations = 100000
+
+# Maximum number of authors (default: 1000)
+max_authors = 1000
+
+# Maximum document ID length in characters (default: 256)
+max_document_id_length = 256
+
+# Maximum author ID length in characters (default: 128)
+max_author_id_length = 128
+
+[comments]
+# Comments service configuration
+
+# Maximum comment length in characters (default: 10000)
+max_comment_length = 10000
+
+# Maximum title length in characters (default: 500)
+max_title_length = 500
+
+# Maximum mentions per comment (default: 100)
+max_mentions = 100
+
+# Maximum attachments per comment (default: 10)
+max_attachments = 10
+
+[math]
+# Math service configuration
+
+# Maximum LaTeX expression length in characters (default: 100000)
+max_latex_length = 100000
+
+# Maximum nesting depth (default: 100)
+max_nesting_depth = 100
+
+# Maximum command length in characters (default: 50)
+max_command_length = 50
+
+[macro]
+# Macro service configuration
+
+# Maximum macro name length in characters (default: 200)
+max_macro_name_length = 200
+
+# Maximum description length in characters (default: 1000)
+max_description_length = 1000
+
+# Maximum actions per macro (default: 1000)
+max_actions_per_macro = 1000
+
+# Maximum number of macros (default: 500)
+max_macros = 500
+
+# Maximum delay in milliseconds (default: 60000 = 1 minute)
+max_delay_ms = 60000
+
+[diff]
+# Diff service configuration
+
+# Maximum text length in bytes (default: 100MB)
+max_text_length = 104857600
+
+# Maximum line count (default: 100000)
+max_line_count = 100000
+
+# Maximum line length in characters (default: 10000)
+max_line_length = 10000
+
+[cloud]
+# Cloud service configuration
+
+# Maximum file size in bytes (default: 100MB)
+max_file_size = 104857600
+
+# Maximum file path length in characters (default: 512)
+max_file_path_length = 512
+
+# Maximum file name length in characters (default: 256)
+max_file_name_length = 256
+
+[accessibility]
+# Accessibility service configuration
+
+# Maximum tree nodes (default: 10000)
+max_tree_nodes = 10000
+
+# Maximum tree depth (default: 100)
+max_tree_depth = 100
+
+# Maximum node ID length in characters (default: 256)
+max_node_id_length = 256
+
+# Maximum text length in characters (default: 1000)
+max_text_length = 1000
+
+[plugin]
+# Plugin service configuration
+
+# Maximum plugin ID length in characters (default: 200)
+max_plugin_id_length = 200
+
+# Maximum plugin name length in characters (default: 500)
+max_plugin_name_length = 500
+
+# Maximum number of plugins (default: 100)
+max_plugins = 100
+
+# Maximum hooks per plugin (default: 50)
+max_hooks_per_plugin = 50
+
+# Maximum config key length in characters (default: 200)
+max_config_key_length = 200
+
+# Maximum config value length in characters (default: 10000)
+max_config_value_length = 10000
+
+[error_handling]
+# Error handling configuration
+
+# Maximum retry attempts (default: 3)
+max_retry_attempts = 3
+
+# Circuit breaker failure threshold (default: 5)
+circuit_breaker_threshold = 5
+

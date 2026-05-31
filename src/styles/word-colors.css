@@ -1,0 +1,214 @@
+/**
+ * Microsoft Word 2019/2021 精确颜色系统
+ * 基于 Fluent Design System 和 Office UI Fabric
+ */
+
+:root {
+  /* ==================== 主题色 ==================== */
+  --word-accent: #0078d4;
+  --word-accent-hover: #106ebe;
+  --word-accent-pressed: #005a9e;
+  --word-accent-light: #deecf9;
+
+  /* ==================== Ribbon 颜色 ==================== */
+  --word-ribbon-bg: #f3f3f3;
+  --word-ribbon-tab-bg: transparent;
+  --word-ribbon-tab-hover: #e1dfdd;
+  --word-ribbon-tab-active-bg: #ffffff;
+  --word-ribbon-tab-active-border: #0078d4;
+  --word-ribbon-panel-bg: #ffffff;
+
+  /* ==================== 按钮颜色 ==================== */
+  --word-button-bg: transparent;
+  --word-button-hover: #cce4f7;
+  --word-button-active: #92c6f0;
+  --word-button-pressed: #6cb4ee;
+  --word-button-disabled-bg: #f3f2f1;
+  --word-button-disabled-text: #a19f9d;
+  --word-button-border: transparent;
+  --word-button-border-hover: #cce4f7;
+
+  /* ==================== 文本颜色 ==================== */
+  --word-text-primary: #323130;
+  --word-text-secondary: #605e5c;
+  --word-text-tertiary: #8a8886;
+  --word-text-disabled: #a19f9d;
+  --word-text-white: #ffffff;
+  --word-text-link: #0078d4;
+  --word-text-link-hover: #106ebe;
+
+  /* ==================== 边框和分隔线 ==================== */
+  --word-border: #edebe9;
+  --word-border-strong: #8a8886;
+  --word-divider: #d1d1d1;
+  --word-divider-light: #edebe9;
+
+  /* ==================== 背景色 ==================== */
+  --word-bg-canvas: #e5e5e5;
+  --word-bg-page: #ffffff;
+  --word-bg-panel: #f3f3f3;
+  --word-bg-hover: #f3f2f1;
+  --word-bg-selected: #deecf9;
+  --word-bg-disabled: #f3f2f1;
+
+  /* ==================== 状态栏 ==================== */
+  --word-statusbar-bg: #f3f3f3;
+  --word-statusbar-border: #d1d1d1;
+  --word-statusbar-text: #323130;
+  --word-statusbar-hover: #e1dfdd;
+
+  /* ==================== 对话框 ==================== */
+  --word-dialog-bg: #ffffff;
+  --word-dialog-header-bg: #0078d4;
+  --word-dialog-header-text: #ffffff;
+  --word-dialog-border: #8a8886;
+  --word-dialog-shadow: rgba(0, 0, 0, 0.15);
+
+  /* ==================== 输入控件 ==================== */
+  --word-input-bg: #ffffff;
+  --word-input-border: #8a8886;
+  --word-input-border-hover: #323130;
+  --word-input-border-focus: #0078d4;
+  --word-input-text: #323130;
+  --word-input-placeholder: #a19f9d;
+
+  /* ==================== 下拉菜单 ==================== */
+  --word-dropdown-bg: #ffffff;
+  --word-dropdown-border: #8a8886;
+  --word-dropdown-hover: #f3f2f1;
+  --word-dropdown-selected: #deecf9;
+  --word-dropdown-shadow: rgba(0, 0, 0, 0.13);
+
+  /* ==================== 工具提示 ==================== */
+  --word-tooltip-bg: #ffffff;
+  --word-tooltip-border: #8a8886;
+  --word-tooltip-text: #323130;
+  --word-tooltip-shadow: rgba(0, 0, 0, 0.13);
+
+  /* ==================== 滚动条 ==================== */
+  --word-scrollbar-bg: #f3f2f1;
+  --word-scrollbar-thumb: #c8c6c4;
+  --word-scrollbar-thumb-hover: #a19f9d;
+
+  /* ==================== 阴影 ==================== */
+  --word-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --word-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08), 0 0 2px rgba(0, 0, 0, 0.05);
+  --word-shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.08), 0 0 2px rgba(0, 0, 0, 0.05);
+  --word-shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.08), 0 0 2px rgba(0, 0, 0, 0.05);
+  --word-shadow-page:
+    0 0 0 1px rgba(0, 0, 0, 0.05), 0 2px 4px rgba(0, 0, 0, 0.08), 0 8px 16px rgba(0, 0, 0, 0.06);
+
+  /* ==================== 特殊颜色 ==================== */
+  --word-error: #a4262c;
+  --word-error-bg: #fde7e9;
+  --word-warning: #f7630c;
+  --word-warning-bg: #fff4ce;
+  --word-success: #107c10;
+  --word-success-bg: #dff6dd;
+  --word-info: #0078d4;
+  --word-info-bg: #f3f9fd;
+}
+
+/* ==================== 深色模式 ==================== */
+.dark {
+  /* 主题色 */
+  --word-accent: #4a9eff;
+  --word-accent-hover: #6cb0ff;
+  --word-accent-pressed: #3a8eef;
+  --word-accent-light: #1e3a5f;
+
+  /* Ribbon 颜色 */
+  --word-ribbon-bg: #2b2b2b;
+  --word-ribbon-tab-bg: transparent;
+  --word-ribbon-tab-hover: #3f3f3f;
+  --word-ribbon-tab-active-bg: #1e1e1e;
+  --word-ribbon-tab-active-border: #4a9eff;
+  --word-ribbon-panel-bg: #1e1e1e;
+
+  /* 按钮颜色 */
+  --word-button-bg: transparent;
+  --word-button-hover: #3f3f3f;
+  --word-button-active: #505050;
+  --word-button-pressed: #5a5a5a;
+  --word-button-disabled-bg: #2b2b2b;
+  --word-button-disabled-text: #6b6b6b;
+
+  /* 文本颜色 */
+  --word-text-primary: #ffffff;
+  --word-text-secondary: #cccccc;
+  --word-text-tertiary: #999999;
+  --word-text-disabled: #6b6b6b;
+  --word-text-link: #4a9eff;
+  --word-text-link-hover: #6cb0ff;
+
+  /* 边框和分隔线 */
+  --word-border: #3f3f3f;
+  --word-border-strong: #6b6b6b;
+  --word-divider: #3f3f3f;
+  --word-divider-light: #2b2b2b;
+
+  /* 背景色 */
+  --word-bg-canvas: #1e1e1e;
+  --word-bg-page: #252525;
+  --word-bg-panel: #2b2b2b;
+  --word-bg-hover: #3f3f3f;
+  --word-bg-selected: #1e3a5f;
+  --word-bg-disabled: #2b2b2b;
+
+  /* 状态栏 */
+  --word-statusbar-bg: #2b2b2b;
+  --word-statusbar-border: #3f3f3f;
+  --word-statusbar-text: #ffffff;
+  --word-statusbar-hover: #3f3f3f;
+
+  /* 对话框 */
+  --word-dialog-bg: #252525;
+  --word-dialog-header-bg: #1e3a5f;
+  --word-dialog-header-text: #ffffff;
+  --word-dialog-border: #3f3f3f;
+  --word-dialog-shadow: rgba(0, 0, 0, 0.5);
+
+  /* 输入控件 */
+  --word-input-bg: #1e1e1e;
+  --word-input-border: #6b6b6b;
+  --word-input-border-hover: #999999;
+  --word-input-border-focus: #4a9eff;
+  --word-input-text: #ffffff;
+  --word-input-placeholder: #6b6b6b;
+
+  /* 下拉菜单 */
+  --word-dropdown-bg: #252525;
+  --word-dropdown-border: #3f3f3f;
+  --word-dropdown-hover: #3f3f3f;
+  --word-dropdown-selected: #1e3a5f;
+  --word-dropdown-shadow: rgba(0, 0, 0, 0.5);
+
+  /* 工具提示 */
+  --word-tooltip-bg: #252525;
+  --word-tooltip-border: #3f3f3f;
+  --word-tooltip-text: #ffffff;
+  --word-tooltip-shadow: rgba(0, 0, 0, 0.5);
+
+  /* 滚动条 */
+  --word-scrollbar-bg: #2b2b2b;
+  --word-scrollbar-thumb: #6b6b6b;
+  --word-scrollbar-thumb-hover: #999999;
+
+  /* 阴影 */
+  --word-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --word-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 2px rgba(0, 0, 0, 0.2);
+  --word-shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.3), 0 0 2px rgba(0, 0, 0, 0.2);
+  --word-shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.3), 0 0 2px rgba(0, 0, 0, 0.2);
+  --word-shadow-page:
+    0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 16px rgba(0, 0, 0, 0.2);
+
+  /* 特殊颜色 */
+  --word-error: #f1707b;
+  --word-error-bg: #442726;
+  --word-warning: #ffb900;
+  --word-warning-bg: #433519;
+  --word-success: #6ccb5f;
+  --word-success-bg: #27462b;
+  --word-info: #4a9eff;
+  --word-info-bg: #1e3a5f;
+}
