@@ -48,6 +48,9 @@ Logos is a modern word processing software built with Tauri, Vue3, TipTap, and T
 - **Print Support**: Native browser printing functionality
 - **Clear Document**: Option to clear document with confirmation
 - **Modern UI**: Clean, Word-style toolbar with Tailwind CSS styling
+  - **Lucide Icons**: Beautiful, consistent icon system using Lucide icon library
+  - **Enhanced Status Bar**: Improved status bar with 16px icons for better visibility
+  - **Ribbon Toolbar**: Professional ribbon interface with categorized tools
 - **Keyboard Shortcuts**:
   - Ctrl/Cmd + S: Save document
   - Ctrl/Cmd + O: Open document
