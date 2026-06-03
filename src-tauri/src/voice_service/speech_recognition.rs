@@ -1,4 +1,7 @@
 use serde::{Deserialize, Serialize};
+use crate::error_handling::CircuitBreaker;
+use crate::config_service::ExportConfigService;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecognitionConfig {
@@ -31,23 +34,36 @@ pub struct RecognitionResult {
 pub struct SpeechRecognizer {
     config: RecognitionConfig,
     is_listening: bool,
+    config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl SpeechRecognizer {
     pub fn new(config: RecognitionConfig) -> Self {
+        let config_service = Arc::new(ExportConfigService::new());
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             config,
             is_listening: false,
+            config_service,
+            circuit_breaker,
         }
     }
 
     /// Start speech recognition
     pub fn start(&mut self) -> Result<(), String> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err("Circuit breaker is open, blocking speech recognition".to_string());
+        }
+
         if self.is_listening {
+            self.circuit_breaker.record_failure();
             return Err("Already listening".to_string());
         }
 
         self.is_listening = true;
+        self.circuit_breaker.record_success();
         // In production, this would initialize the speech recognition engine
         Ok(())
     }

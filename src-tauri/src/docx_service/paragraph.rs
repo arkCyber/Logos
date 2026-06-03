@@ -1,5 +1,4 @@
 use super::{ParagraphStyle, TextStyle};
-use super::style::{Alignment, FontStyle, Spacing};
 use serde::{Deserialize, Serialize};
 
 /// 列表类型
@@ -153,6 +152,7 @@ impl Paragraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::style::{FontStyle, Alignment, Spacing};
 
     #[test]
     fn test_paragraph_new() {

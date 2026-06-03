@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { logger, LogCategory } from '../utils/logger';
-import { createError, ErrorCode, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
+import { createError, ErrorCode, ErrorSeverity, ErrorCategory } from '../utils/errorHandler'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { typst } from '../utils/typstConverter';
 import { typstHighlighter } from '../utils/typstHighlighter';
 

@@ -10,10 +10,10 @@
  * 5. 完整的错误处理和日志记录
  */
 
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import * as pdfjsLib from 'pdfjs-dist';
 import { logger, LogCategory } from '../utils/logger';
-import { createError, ErrorCode, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
+import { createError, ErrorCode, ErrorSeverity, ErrorCategory } from '../utils/errorHandler'; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 // 配置 pdf.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -485,8 +485,8 @@ defineExpose({
         <button 
           class="toolbar-btn" 
           :disabled="currentPage <= 1" 
-          @click="previousPage"
           title="上一页"
+          @click="previousPage"
         >
           ←
         </button>
@@ -496,28 +496,28 @@ defineExpose({
         <button 
           class="toolbar-btn" 
           :disabled="currentPage >= totalPages" 
-          @click="nextPage"
           title="下一页"
+          @click="nextPage"
         >
           →
         </button>
       </div>
 
       <div class="toolbar-group">
-        <button class="toolbar-btn" @click="zoomOut" title="缩小">
+        <button class="toolbar-btn" title="缩小" @click="zoomOut">
           -
         </button>
         <span class="zoom-level">{{ Math.round(scale * 100) }}%</span>
-        <button class="toolbar-btn" @click="zoomIn" title="放大">
+        <button class="toolbar-btn" title="放大" @click="zoomIn">
           +
         </button>
       </div>
 
       <div class="toolbar-group">
-        <button class="toolbar-btn" @click="rotateCounterClockwise" title="逆时针旋转">
+        <button class="toolbar-btn" title="逆时针旋转" @click="rotateCounterClockwise">
           ↺
         </button>
-        <button class="toolbar-btn" @click="rotateClockwise" title="顺时针旋转">
+        <button class="toolbar-btn" title="顺时针旋转" @click="rotateClockwise">
           ↻
         </button>
       </div>

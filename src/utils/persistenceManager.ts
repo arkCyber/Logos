@@ -181,11 +181,15 @@ class IndexedDBStore implements DataStore {
 
   async get<T>(key: string): Promise<T | null> {
     if (!this.db) {
-await this.initialize();
-}
+      await this.initialize();
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.storeName], 'readonly');
+      const transaction = this.db?.transaction([this.storeName], 'readonly');
+      if (!transaction) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
       const store = transaction.objectStore(this.storeName);
       const request = store.get(key);
 
@@ -201,11 +205,15 @@ await this.initialize();
 
   async set<T>(key: string, value: T): Promise<void> {
     if (!this.db) {
-await this.initialize();
-}
+      await this.initialize();
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.storeName], 'readwrite');
+      const transaction = this.db?.transaction([this.storeName], 'readwrite');
+      if (!transaction) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
       const store = transaction.objectStore(this.storeName);
       const request = store.put(value, key);
 
@@ -221,11 +229,15 @@ await this.initialize();
 
   async delete(key: string): Promise<void> {
     if (!this.db) {
-await this.initialize();
-}
+      await this.initialize();
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.storeName], 'readwrite');
+      const transaction = this.db?.transaction([this.storeName], 'readwrite');
+      if (!transaction) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
       const store = transaction.objectStore(this.storeName);
       const request = store.delete(key);
 
@@ -241,11 +253,15 @@ await this.initialize();
 
   async clear(): Promise<void> {
     if (!this.db) {
-await this.initialize();
-}
+      await this.initialize();
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.storeName], 'readwrite');
+      const transaction = this.db?.transaction([this.storeName], 'readwrite');
+      if (!transaction) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
       const store = transaction.objectStore(this.storeName);
       const request = store.clear();
 
@@ -261,11 +277,15 @@ await this.initialize();
 
   async keys(): Promise<string[]> {
     if (!this.db) {
-await this.initialize();
-}
+      await this.initialize();
+    }
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([this.storeName], 'readonly');
+      const transaction = this.db?.transaction([this.storeName], 'readonly');
+      if (!transaction) {
+        reject(new Error('Database not initialized'));
+        return;
+      }
       const store = transaction.objectStore(this.storeName);
       const request = store.getAllKeys();
 
@@ -655,7 +675,11 @@ export class PersistenceManager {
         this.versions.set(key, []);
       }
 
-      const versions = this.versions.get(key)!;
+      const versions = this.versions.get(key);
+      if (!versions) {
+        this.versions.set(key, []);
+        return;
+      }
       const recoveryPoint: RecoveryPoint = {
         id: `version-${this.currentVersion}-${Date.now()}`,
         timestamp: Date.now(),

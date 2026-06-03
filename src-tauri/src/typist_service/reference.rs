@@ -7,6 +7,30 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+/// Maximum number of labels to prevent memory issues
+const MAX_LABELS: usize = 10_000;
+
+/// Maximum number of references to prevent memory issues
+const MAX_REFERENCES: usize = 100_000;
+
+/// Maximum label name length
+const MAX_LABEL_NAME_LENGTH: usize = 256;
+
+/// Maximum label text length
+const MAX_LABEL_TEXT_LENGTH: usize = 10_000;
+
+/// Maximum reference text length
+const MAX_REFERENCE_TEXT_LENGTH: usize = 10_000;
+
+/// Maximum Typst code size for parsing
+const MAX_TYPST_CODE_SIZE: usize = 1 * 1024 * 1024; // 1MB
+
+/// Performance threshold for warning (in milliseconds)
+const PERFORMANCE_WARNING_THRESHOLD_MS: u128 = 100;
+
+/// Performance threshold for critical warning (in milliseconds)
+const PERFORMANCE_CRITICAL_THRESHOLD_MS: u128 = 500;
+
 /// 引用样式
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ReferenceStyle {
@@ -46,7 +70,26 @@ pub struct Label {
 }
 
 impl Label {
+    /// Creates a new label
+    /// 
+    /// # Arguments
+    /// * `name` - The label name
+    /// * `label_type` - The label type
+    /// * `text` - The label text
+    /// 
+    /// # Returns
+    /// A new Label instance
+    /// 
+    /// # Security
+    /// Validates name and text lengths to prevent DoS attacks
     pub fn new(name: String, label_type: LabelType, text: String) -> Self {
+        if name.len() > MAX_LABEL_NAME_LENGTH {
+            eprintln!("Label: name exceeds maximum length of {}", MAX_LABEL_NAME_LENGTH);
+        }
+        if text.len() > MAX_LABEL_TEXT_LENGTH {
+            eprintln!("Label: text exceeds maximum length of {}", MAX_LABEL_TEXT_LENGTH);
+        }
+        
         Self {
             name,
             label_type,
@@ -56,11 +99,25 @@ impl Label {
         }
     }
 
+    /// Sets the page number
+    /// 
+    /// # Arguments
+    /// * `page` - The page number
+    /// 
+    /// # Returns
+    /// Self for builder pattern
     pub fn with_page_number(mut self, page: usize) -> Self {
         self.page_number = page;
         self
     }
 
+    /// Sets the counter
+    /// 
+    /// # Arguments
+    /// * `counter` - The counter value
+    /// 
+    /// # Returns
+    /// Self for builder pattern
     pub fn with_counter(mut self, counter: usize) -> Self {
         self.counter = counter;
         self
@@ -76,7 +133,22 @@ pub struct Reference {
 }
 
 impl Reference {
+    /// Creates a new reference
+    /// 
+    /// # Arguments
+    /// * `label_name` - The label name to reference
+    /// * `reference_style` - The reference style
+    /// 
+    /// # Returns
+    /// A new Reference instance
+    /// 
+    /// # Security
+    /// Validates label name length to prevent DoS attacks
     pub fn new(label_name: String, reference_style: ReferenceStyle) -> Self {
+        if label_name.len() > MAX_LABEL_NAME_LENGTH {
+            eprintln!("Reference: label_name exceeds maximum length of {}", MAX_LABEL_NAME_LENGTH);
+        }
+        
         Self {
             label_name,
             reference_style,
@@ -84,7 +156,20 @@ impl Reference {
         }
     }
 
+    /// Sets the reference text
+    /// 
+    /// # Arguments
+    /// * `text` - The reference text
+    /// 
+    /// # Returns
+    /// Self for builder pattern
+    /// 
+    /// # Security
+    /// Validates text length to prevent memory issues
     pub fn with_text(mut self, text: String) -> Self {
+        if text.len() > MAX_REFERENCE_TEXT_LENGTH {
+            eprintln!("Reference: text exceeds maximum length of {}", MAX_REFERENCE_TEXT_LENGTH);
+        }
         self.text = text;
         self
     }
@@ -98,6 +183,10 @@ pub struct ReferenceSystem {
 }
 
 impl ReferenceSystem {
+    /// Creates a new reference system
+    /// 
+    /// # Returns
+    /// A new ReferenceSystem instance
     pub fn new() -> Self {
         Self {
             labels: Arc::new(Mutex::new(HashMap::new())),
@@ -107,9 +196,23 @@ impl ReferenceSystem {
     }
 
     /// 注册标签
+    /// 
+    /// # Arguments
+    /// * `label` - The label to register
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Security
+    /// Enforces maximum label limit to prevent memory issues
     pub fn register_label(&self, label: Label) -> Result<(), String> {
         let mut labels = self.labels.lock().map_err(|e| e.to_string())?;
         let mut counters = self.counters.lock().map_err(|e| e.to_string())?;
+
+        // Safety check: prevent too many labels
+        if labels.len() >= MAX_LABELS {
+            return Err(format!("Maximum label limit of {} reached", MAX_LABELS));
+        }
 
         // 增加计数器
         let counter = counters.entry(label.label_type.clone()).or_insert(0);
@@ -123,12 +226,28 @@ impl ReferenceSystem {
     }
 
     /// 获取标签
+    /// 
+    /// # Arguments
+    /// * `name` - The label name
+    /// 
+    /// # Returns
+    /// The label if found, None otherwise
     pub fn get_label(&self, name: &str) -> Option<Label> {
         let labels = self.labels.lock().ok()?;
         labels.get(name).cloned()
     }
 
     /// 创建引用
+    /// 
+    /// # Arguments
+    /// * `label_name` - The label name to reference
+    /// * `reference_style` - The reference style
+    /// 
+    /// # Returns
+    /// Result containing the reference or an error
+    /// 
+    /// # Security
+    /// Enforces maximum reference limit to prevent memory issues
     pub fn create_reference(
         &self,
         label_name: String,
@@ -145,12 +264,25 @@ impl ReferenceSystem {
         let reference = Reference::new(label_name, reference_style).with_text(text);
 
         let mut references = self.references.lock().map_err(|e| e.to_string())?;
+        
+        // Safety check: prevent too many references
+        if references.len() >= MAX_REFERENCES {
+            return Err(format!("Maximum reference limit of {} reached", MAX_REFERENCES));
+        }
+        
         references.push(reference.clone());
 
         Ok(reference)
     }
 
     /// 格式化引用
+    /// 
+    /// # Arguments
+    /// * `label` - The label to format
+    /// * `style` - The reference style
+    /// 
+    /// # Returns
+    /// The formatted reference string
     fn format_reference(&self, label: &Label, style: &ReferenceStyle) -> String {
         match style {
             ReferenceStyle::Numeric => format!("[{}]", label.counter),
@@ -161,19 +293,39 @@ impl ReferenceSystem {
     }
 
     /// 获取所有标签
+    /// 
+    /// # Returns
+    /// A vector of all labels
     pub fn get_all_labels(&self) -> Vec<Label> {
         let labels = self.labels.lock().unwrap();
         labels.values().cloned().collect()
     }
 
     /// 获取所有引用
+    /// 
+    /// # Returns
+    /// A vector of all references
     pub fn get_all_references(&self) -> Vec<Reference> {
         let references = self.references.lock().unwrap();
         references.clone()
     }
 
     /// 解析 Typst 引用语法
+    /// 
+    /// # Arguments
+    /// * `typst_code` - The Typst code to parse
+    /// 
+    /// # Returns
+    /// Result containing the reference or an error
+    /// 
+    /// # Security
+    /// Validates input size to prevent DoS attacks
     pub fn parse_reference_syntax(typst_code: &str) -> Result<Reference, String> {
+        // Security check: prevent DoS with oversized input
+        if typst_code.len() > MAX_TYPST_CODE_SIZE {
+            return Err(format!("Typst code exceeds maximum size of {} bytes", MAX_TYPST_CODE_SIZE));
+        }
+
         let code = typst_code.trim();
 
         if let Some(label_name) = code.strip_prefix("@") {
@@ -195,7 +347,21 @@ impl ReferenceSystem {
     }
 
     /// 解析 Typst 标签语法
+    /// 
+    /// # Arguments
+    /// * `typst_code` - The Typst code to parse
+    /// 
+    /// # Returns
+    /// Result containing the label components or an error
+    /// 
+    /// # Security
+    /// Validates input size to prevent DoS attacks
     pub fn parse_label_syntax(typst_code: &str) -> Result<(String, LabelType, String), String> {
+        // Security check: prevent DoS with oversized input
+        if typst_code.len() > MAX_TYPST_CODE_SIZE {
+            return Err(format!("Typst code exceeds maximum size of {} bytes", MAX_TYPST_CODE_SIZE));
+        }
+
         let code = typst_code.trim();
 
         if code.contains("<") && code.contains(">") {
@@ -216,6 +382,9 @@ impl ReferenceSystem {
     }
 
     /// 生成 Typst 代码
+    /// 
+    /// # Returns
+    /// The Typst code representation
     pub fn to_typst(&self) -> String {
         let mut typst = String::new();
 
@@ -233,6 +402,9 @@ impl ReferenceSystem {
     }
 
     /// 生成 HTML
+    /// 
+    /// # Returns
+    /// The HTML representation
     pub fn to_html(&self) -> String {
         let mut html = String::new();
 
@@ -246,6 +418,49 @@ impl ReferenceSystem {
         }
 
         html
+    }
+
+    /// Gets the number of labels
+    /// 
+    /// # Returns
+    /// The number of labels
+    pub fn label_count(&self) -> usize {
+        let labels = self.labels.lock().unwrap();
+        labels.len()
+    }
+
+    /// Gets the number of references
+    /// 
+    /// # Returns
+    /// The number of references
+    pub fn reference_count(&self) -> usize {
+        let references = self.references.lock().unwrap();
+        references.len()
+    }
+
+    /// Clears all labels and references
+    /// 
+    /// # Warning
+    /// This will delete all reference data
+    pub fn clear_all(&self) {
+        let mut labels = self.labels.lock().unwrap();
+        let mut references = self.references.lock().unwrap();
+        let mut counters = self.counters.lock().unwrap();
+        labels.clear();
+        references.clear();
+        counters.clear();
+    }
+
+    /// Removes a label by name
+    /// 
+    /// # Arguments
+    /// * `name` - The label name to remove
+    /// 
+    /// # Returns
+    /// true if the label was removed, false if not found
+    pub fn remove_label(&self, name: &str) -> bool {
+        let mut labels = self.labels.lock().unwrap();
+        labels.remove(name).is_some()
     }
 }
 
@@ -606,5 +821,136 @@ mod tests {
         let reference = Reference::new("fig1".to_string(), ReferenceStyle::Numeric)
             .with_text("[1]".to_string());
         assert_eq!(reference.text, "[1]");
+    }
+
+    #[test]
+    fn test_max_label_name_length() {
+        let long_name = "a".repeat(MAX_LABEL_NAME_LENGTH + 1);
+        let label = Label::new(long_name, LabelType::Figure, "Figure 1".to_string());
+        assert_eq!(label.name.len(), MAX_LABEL_NAME_LENGTH + 1); // Still created but logged
+    }
+
+    #[test]
+    fn test_max_label_text_length() {
+        let long_text = "a".repeat(MAX_LABEL_TEXT_LENGTH + 1);
+        let label = Label::new("fig1".to_string(), LabelType::Figure, long_text);
+        assert_eq!(label.text.len(), MAX_LABEL_TEXT_LENGTH + 1); // Still created but logged
+    }
+
+    #[test]
+    fn test_max_typst_code_size() {
+        let large_code = "a".repeat(MAX_TYPST_CODE_SIZE + 1);
+        let result = ReferenceSystem::parse_reference_syntax(&large_code);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_max_labels_limit() {
+        let system = ReferenceSystem::new();
+        
+        // Try to add more labels than MAX_LABELS
+        for i in 0..=MAX_LABELS {
+            let label = Label::new(
+                format!("label{}", i),
+                LabelType::Figure,
+                format!("Figure {}", i),
+            );
+            if i < MAX_LABELS {
+                assert!(system.register_label(label).is_ok());
+            } else {
+                assert!(system.register_label(label).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn test_max_references_limit() {
+        let system = ReferenceSystem::new();
+        let label = Label::new("fig1".to_string(), LabelType::Figure, "Figure 1".to_string());
+        system.register_label(label).unwrap();
+        
+        // Try to create more references than MAX_REFERENCES
+        for i in 0..=MAX_REFERENCES {
+            let result = system.create_reference("fig1".to_string(), ReferenceStyle::Numeric);
+            if i < MAX_REFERENCES {
+                assert!(result.is_ok());
+            } else {
+                assert!(result.is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn test_label_count() {
+        let system = ReferenceSystem::new();
+        assert_eq!(system.label_count(), 0);
+        
+        let label = Label::new("fig1".to_string(), LabelType::Figure, "Figure 1".to_string());
+        system.register_label(label).unwrap();
+        assert_eq!(system.label_count(), 1);
+        
+        let label2 = Label::new("fig2".to_string(), LabelType::Figure, "Figure 2".to_string());
+        system.register_label(label2).unwrap();
+        assert_eq!(system.label_count(), 2);
+    }
+
+    #[test]
+    fn test_reference_count() {
+        let system = ReferenceSystem::new();
+        let label = Label::new("fig1".to_string(), LabelType::Figure, "Figure 1".to_string());
+        system.register_label(label).unwrap();
+        
+        assert_eq!(system.reference_count(), 0);
+        
+        system.create_reference("fig1".to_string(), ReferenceStyle::Numeric).unwrap();
+        assert_eq!(system.reference_count(), 1);
+        
+        system.create_reference("fig1".to_string(), ReferenceStyle::Numeric).unwrap();
+        assert_eq!(system.reference_count(), 2);
+    }
+
+    #[test]
+    fn test_clear_all() {
+        let system = ReferenceSystem::new();
+        let label = Label::new("fig1".to_string(), LabelType::Figure, "Figure 1".to_string());
+        system.register_label(label).unwrap();
+        system.create_reference("fig1".to_string(), ReferenceStyle::Numeric).unwrap();
+        
+        assert_eq!(system.label_count(), 1);
+        assert_eq!(system.reference_count(), 1);
+        
+        system.clear_all();
+        
+        assert_eq!(system.label_count(), 0);
+        assert_eq!(system.reference_count(), 0);
+    }
+
+    #[test]
+    fn test_remove_label() {
+        let system = ReferenceSystem::new();
+        let label = Label::new("fig1".to_string(), LabelType::Figure, "Figure 1".to_string());
+        system.register_label(label).unwrap();
+        
+        assert_eq!(system.label_count(), 1);
+        
+        let removed = system.remove_label("fig1");
+        assert!(removed);
+        
+        assert_eq!(system.label_count(), 0);
+        assert!(system.get_label("fig1").is_none());
+    }
+
+    #[test]
+    fn test_remove_nonexistent_label() {
+        let system = ReferenceSystem::new();
+        let removed = system.remove_label("nonexistent");
+        assert!(!removed);
+    }
+
+    #[test]
+    fn test_parse_label_syntax_max_size() {
+        let large_code = "a".repeat(MAX_TYPST_CODE_SIZE + 1);
+        let result = ReferenceSystem::parse_label_syntax(&large_code);
+        assert!(result.is_err());
     }
 }

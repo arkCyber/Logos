@@ -1,8 +1,8 @@
-# Logos - 集成 Typst 的 AI 智能文字处理软件
+# Logos智道办公软件 - 集成 Typst 的 AI 智能办公软件
 
 [English](./README.md) | [中文](./README.zh-CN.md)
 
-Logos 是一款基于 Tauri、Vue3、TipTap 和 Tailwind CSS 构建的现代化文字处理软件。它具备 AI 驱动的文本编辑功能，包括润色、扩写和重写功能。**核心创新在于集成了 Typst 编译引擎，实现了实时专业排版预览。**
+Logos智道办公软件是一款基于 Tauri、Vue3、TipTap 和 Tailwind CSS 构建的现代化办公软件。它具备 AI 驱动的文本编辑功能，包括润色、扩写和重写功能。**核心创新在于集成了 Typst 编译引擎，实现了实时专业排版预览。**
 
 ## 功能特性
 

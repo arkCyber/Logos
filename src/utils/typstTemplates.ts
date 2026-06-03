@@ -4,10 +4,22 @@
  * 支持本地文件系统持久化存储
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { logger, LogCategory } from './logger';
 
 // Typst官方模板库URL
 export const TYPST_TEMPLATE_MARKET_URL = 'https://typst.app/universe/search/?kind=templates';
+
+// Check if Tauri is available
+let isTauriAvailable = false;
+let invokeTauri: any = null;
+
+try {
+  const tauriModule = await import('@tauri-apps/api/core');
+  isTauriAvailable = tauriModule.isTauri();
+  invokeTauri = tauriModule.invoke;
+} catch (error) {
+  logger.debug('Tauri not available, running in web mode', {}, LogCategory.SYSTEM);
+}
 
 export interface TypstTemplate {
   id: string;
@@ -28,7 +40,7 @@ export class TypstTemplateManager {
   constructor() {
     this.initializeDefaultTemplates();
     // 异步加载磁盘模板，不阻塞构造函数
-    this.loadTemplatesFromDisk().catch(console.error);
+    this.loadTemplatesFromDisk().catch((error) => logger.error('Failed to load templates from disk in constructor', error, LogCategory.SYSTEM));
   }
 
   /**
@@ -36,17 +48,19 @@ export class TypstTemplateManager {
    */
   private async loadTemplatesFromDisk(): Promise<void> {
     try {
-      const templatesJson = await invoke<string>('list_templates');
-      const diskTemplates: TypstTemplate[] = JSON.parse(templatesJson);
-      
-      diskTemplates.forEach(template => {
-        this.templates.set(template.id, template);
-      });
-      
-      this.loadedFromDisk = true;
-      console.log(`[TypstTemplateManager] Loaded ${diskTemplates.length} templates from disk`);
+      if (isTauriAvailable && invokeTauri) {
+        const templatesJson = await invokeTauri('list_templates');
+        const diskTemplates: TypstTemplate[] = JSON.parse(templatesJson);
+        
+        diskTemplates.forEach(template => {
+          this.templates.set(template.id, template);
+        });
+        
+        this.loadedFromDisk = true;
+        logger.debug('Loaded templates from disk', { count: diskTemplates.length }, LogCategory.SYSTEM);
+      }
     } catch (error) {
-      console.error('[TypstTemplateManager] Failed to load templates from disk:', error);
+      logger.error('Failed to load templates from disk', error, LogCategory.SYSTEM);
       // 继续使用默认模板
     }
   }
@@ -359,19 +373,21 @@ npm install package-name
   async addTemplate(template: TypstTemplate): Promise<void> {
     this.templates.set(template.id, template);
     
-    // 保存到磁盘
+    // 保存到磁盘 (仅在 Tauri 环境中)
     try {
-      await invoke('save_template', {
-        id: template.id,
-        name: template.name,
-        description: template.description,
-        category: template.category,
-        content: template.content,
-        preview: template.preview
-      });
-      console.log(`[TypstTemplateManager] Saved template "${template.id}" to disk`);
+      if (isTauriAvailable && invokeTauri) {
+        await invokeTauri('save_template', {
+          id: template.id,
+          name: template.name,
+          description: template.description,
+          category: template.category,
+          content: template.content,
+          preview: template.preview
+        });
+        logger.debug('Saved template to disk', { id: template.id }, LogCategory.SYSTEM);
+      }
     } catch (error) {
-      console.error('[TypstTemplateManager] Failed to save template to disk:', error);
+      logger.error('Failed to save template to disk', error, LogCategory.SYSTEM);
     }
   }
 
@@ -403,13 +419,15 @@ npm install package-name
     // 从内存中删除
     const deleted = this.templates.delete(id);
     
-    // 从磁盘删除
+    // 从磁盘删除 (仅在 Tauri 环境中)
     if (deleted) {
       try {
-        await invoke('delete_template', { id });
-        console.log(`[TypstTemplateManager] Deleted template "${id}" from disk`);
+        if (isTauriAvailable && invokeTauri) {
+          await invokeTauri('delete_template', { id });
+          logger.debug('Deleted template from disk', { id }, LogCategory.SYSTEM);
+        }
       } catch (error) {
-        console.error('[TypstTemplateManager] Failed to delete template from disk:', error);
+        logger.error('Failed to delete template from disk', error, LogCategory.SYSTEM);
       }
     }
     
@@ -456,9 +474,12 @@ npm install package-name
    */
   async getTemplatesDirectory(): Promise<string> {
     try {
-      return await invoke<string>('get_templates_directory');
+      if (isTauriAvailable && invokeTauri) {
+        return await invokeTauri('get_templates_directory');
+      }
+      return '';
     } catch (error) {
-      console.error('[TypstTemplateManager] Failed to get templates directory:', error);
+      logger.error('Failed to get templates directory', error, LogCategory.SYSTEM);
       return '';
     }
   }
@@ -468,16 +489,19 @@ npm install package-name
    */
   async downloadTemplateFromUrl(url: string): Promise<TypstTemplate> {
     try {
-      const templateJson = await invoke<string>('download_template_from_url', { url });
-      const template: TypstTemplate = JSON.parse(templateJson);
-      
-      // 添加到内存中的模板
-      this.templates.set(template.id, template);
-      
-      console.log(`[TypstTemplateManager] Downloaded template "${template.id}" from ${url}`);
-      return template;
+      if (isTauriAvailable && invokeTauri) {
+        const templateJson = await invokeTauri('download_template_from_url', { url });
+        const template: TypstTemplate = JSON.parse(templateJson);
+        
+        // 添加到内存中的模板
+        this.templates.set(template.id, template);
+        
+        logger.debug('Downloaded template from URL', { id: template.id, url }, LogCategory.SYSTEM);
+        return template;
+      }
+      throw new Error('Tauri not available');
     } catch (error) {
-      console.error('[TypstTemplateManager] Failed to download template from URL:', error);
+      logger.error('Failed to download template from URL', error, LogCategory.SYSTEM);
       throw error;
     }
   }

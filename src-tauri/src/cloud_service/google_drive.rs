@@ -2,6 +2,9 @@ use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::error_handling::CircuitBreaker;
+use crate::config_service::ExportConfigService;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoogleDriveConfig {
@@ -54,14 +57,17 @@ struct GoogleDriveFileResponse {
 pub struct GoogleDriveClient {
     config: GoogleDriveConfig,
     http_client: Client,
+    circuit_breaker: CircuitBreaker,
 }
 
 #[allow(dead_code)]
 impl GoogleDriveClient {
-    pub fn new(config: GoogleDriveConfig) -> Self {
+    pub fn new(config: GoogleDriveConfig, config_service: Arc<ExportConfigService>) -> Self {
+        let circuit_breaker = CircuitBreaker::new(config_service);
         Self {
             config,
             http_client: Client::new(),
+            circuit_breaker,
         }
     }
 
@@ -102,6 +108,11 @@ impl GoogleDriveClient {
         // End boundary
         body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err("Circuit breaker is open, blocking Google Drive API calls".to_string());
+        }
+
         let response = self
             .http_client
             .post(url)
@@ -116,11 +127,17 @@ impl GoogleDriveClient {
             .body(body)
             .send()
             .await
-            .map_err(|e| format!("Upload request failed: {}", e))?;
+            .map_err(|e| {
+                self.circuit_breaker.record_failure();
+                format!("Upload request failed: {}", e)
+            })?;
 
         if !response.status().is_success() {
+            self.circuit_breaker.record_failure();
             return Err(format!("Upload failed with status: {}", response.status()));
         }
+
+        self.circuit_breaker.record_success();
 
         let file_response: GoogleDriveFileResponse = response
             .json()

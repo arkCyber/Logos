@@ -3,7 +3,7 @@
  * 实现用户在线状态管理、在线用户列表、用户加入/离开事件处理
  */
 
-import { ref, reactive, type Ref } from 'vue';
+import { ref } from 'vue';
 import type { PresenceInfo } from './collaborationService';
 
 // 用户活动信息
@@ -57,10 +57,12 @@ export class PresenceManager {
       this.onUserJoinedCallbacks.forEach((callback) => callback(presence));
     } else {
       // 更新现有用户
-      const existing = this.users.get(userId)!;
-      existing.presence = presence;
-      existing.lastActivity = new Date();
-      this.onPresenceUpdatedCallbacks.forEach((callback) => callback(presence));
+      const existing = this.users.get(userId);
+      if (existing) {
+        existing.presence = presence;
+        existing.lastActivity = new Date();
+        this.onPresenceUpdatedCallbacks.forEach((callback) => callback(presence));
+      }
     }
   }
 
@@ -93,8 +95,8 @@ export class PresenceManager {
     }
     // 按最后活动时间排序
     return users.sort((a, b) => {
-      const activityA = this.users.get(a.user_id)!.lastActivity.getTime();
-      const activityB = this.users.get(b.user_id)!.lastActivity.getTime();
+      const activityA = this.users.get(a.user_id)?.lastActivity.getTime() ?? 0;
+      const activityB = this.users.get(b.user_id)?.lastActivity.getTime() ?? 0;
       return activityB - activityA;
     });
   }
@@ -259,7 +261,7 @@ export function usePresenceManager(currentUserId?: string) {
   const onlineUserCount = ref<number>(manager.getOnlineUserCount());
 
   // 监听用户加入事件
-  manager.onUserJoined((user) => {
+  manager.onUserJoined((_user) => {
     onlineUsers.value = manager.getOnlineUsers();
     onlineUserCount.value = manager.getOnlineUserCount();
   });

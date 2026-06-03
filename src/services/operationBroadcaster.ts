@@ -4,6 +4,7 @@
  */
 
 import type { Editor } from '@tiptap/core';
+import { logger, LogCategory } from '../utils/logger';
 import type { CRDTOperation } from './collaborationService';
 import { getCollaborationService } from './collaborationService';
 
@@ -76,7 +77,7 @@ export class OperationBroadcaster {
    */
   async broadcastOperation(operation: CRDTOperation): Promise<void> {
     if (!this.userId) {
-      console.warn('User ID not set, cannot broadcast operation');
+      logger.warn('User ID not set, cannot broadcast operation', {}, LogCategory.SYSTEM);
       return;
     }
 
@@ -206,7 +207,7 @@ export class OperationBroadcaster {
       return;
     }
 
-    const { view, state } = this.editor;
+    const { view: _view, state: _state } = this.editor;
 
     switch (operation.type) {
       case 'insert':
@@ -303,7 +304,7 @@ export class OperationBroadcaster {
     // 简化实现：将文档变更转换为插入/删除操作
     // 实际实现需要更复杂的逻辑来解析 TipTap Transaction
     const steps = transaction.steps || [];
-    for (const step of steps) {
+    for (const _step of steps) {
       // 这里需要根据 TipTap 的 step 结构进行解析
       // 暂时返回空数组，需要根据实际 TipTap API 实现
     }

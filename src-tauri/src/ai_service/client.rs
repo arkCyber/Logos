@@ -13,7 +13,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 use std::time::Instant;
-use crate::error_handling::{ErrorContext, ErrorSeverity};
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker, RetryPolicy};
 use crate::config_service::ExportConfigService;
 use std::sync::Arc;
 
@@ -39,22 +39,40 @@ pub struct AiClient {
     client: reqwest::Client,
     operation_count: u64,
     last_error: Option<ErrorContext>,
+    /// Circuit breaker for preventing cascading failures
+    circuit_breaker: CircuitBreaker,
+    /// Retry policy for transient failures
+    retry_policy: RetryPolicy,
 }
 
 impl AiClient {
-    pub fn new(config: AiConfig, config_service: Arc<ExportConfigService>) -> Self {
+    pub fn new(config: AiConfig, config_service: Arc<ExportConfigService>) -> Result<Self, String> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.timeout_seconds))
             .build()
-            .expect("Failed to create HTTP client");
+            .map_err(|e| {
+                let context = ErrorContext::new(
+                    ErrorSeverity::Error,
+                    "HTTP_CLIENT_CREATE_FAILED",
+                    &format!("Failed to create HTTP client: {}", e),
+                    "ai_client",
+                );
+                eprintln!("[AI Client] Error: {}", context.message);
+                context.message
+            })?;
 
-        Self {
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
+        let retry_policy = RetryPolicy::default();
+
+        Ok(Self {
             config,
             config_service,
             client,
             operation_count: 0,
             last_error: None,
-        }
+            circuit_breaker,
+            retry_policy,
+        })
     }
 
     /// Validate prompt length
@@ -120,21 +138,36 @@ impl AiClient {
 
     pub async fn call(&mut self, prompt: &str, text: &str) -> Result<String, String> {
         self.operation_count += 1;
-        let start = Instant::now();
+        let _start = Instant::now();
+
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let context = ErrorContext::new(
+                ErrorSeverity::Critical,
+                "CIRCUIT_BREAKER_OPEN",
+                "Circuit breaker is open, blocking AI API calls",
+                "ai_client",
+            );
+            eprintln!("[AI Client] Error: {}", context.message);
+            return Err(context.message);
+        }
 
         // Validate configuration
         if let Err(e) = self.validate_config() {
             self.record_error("INVALID_CONFIG", &e, "call");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate inputs
         if let Err(e) = self.validate_prompt(prompt) {
             self.record_error("INVALID_PROMPT", &e, "call");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
         if let Err(e) = self.validate_text(text) {
             self.record_error("INVALID_TEXT", &e, "call");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
@@ -144,29 +177,33 @@ impl AiClient {
         );
         let full_prompt = format!("{}{}", prompt, text);
 
-        let response = self
-            .client
-            .post(&self.config.api_url)
-            .header("Authorization", format!("Bearer {}", self.config.api_key))
-            .header("Content-Type", "application/json")
-            .json(&serde_json::json!({
-                "model": self.config.model,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": full_prompt
-                    }
-                ],
-                "max_tokens": self.config.max_tokens
-            }))
-            .send()
-            .await
-            .map_err(|e| {
-                let error = format!("HTTP request failed: {}", e);
-                eprintln!("[AI Service] {}", error);
-                self.record_error("HTTP_REQUEST_FAILED", &error, "call");
-                error
-            })?;
+        // Use retry policy for transient failures
+        let response_result = self.retry_policy.execute(|| async {
+            self.client
+                .post(&self.config.api_url)
+                .header("Authorization", format!("Bearer {}", self.config.api_key))
+                .header("Content-Type", "application/json")
+                .json(&serde_json::json!({
+                    "model": self.config.model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": full_prompt
+                        }
+                    ],
+                    "max_tokens": self.config.max_tokens
+                }))
+                .send()
+                .await
+        }).await;
+
+        let response = response_result.map_err(|e| {
+            let error = format!("HTTP request failed after retries: {}", e);
+            eprintln!("[AI Service] {}", error);
+            self.record_error("HTTP_REQUEST_FAILED", &error, "call");
+            self.circuit_breaker.record_failure();
+            error
+        })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -177,6 +214,7 @@ impl AiClient {
             let error = format!("API error ({}): {}", status, error_text);
             eprintln!("[AI Service] {}", error);
             self.record_error("API_ERROR", &error, "call");
+            self.circuit_breaker.record_failure();
             return Err(error);
         }
 
@@ -184,11 +222,13 @@ impl AiClient {
             let error = format!("Failed to parse response: {}", e);
             eprintln!("[AI Service] {}", error);
             self.record_error("PARSE_ERROR", &error, "call");
+            self.circuit_breaker.record_failure();
             error
         })?;
 
         eprintln!("[AI Service] AI call successful");
         self.last_error = None;
+        self.circuit_breaker.record_success();
         res_body
             .choices
             .first()
@@ -208,7 +248,7 @@ impl AiClient {
         app: tauri::AppHandle,
     ) -> Result<(), String> {
         self.operation_count += 1;
-        let start = Instant::now();
+        let _start = Instant::now();
 
         // Validate configuration
         if let Err(e) = self.validate_config() {
@@ -334,6 +374,7 @@ impl Default for AiClient {
             AiConfig::new("YOUR_API_KEY".to_string()) // Fallback for development
         });
         Self::new(config, Arc::new(ExportConfigService::new()))
+            .expect("Failed to create default AiClient")
     }
 }
 
@@ -345,7 +386,7 @@ mod tests {
     #[test]
     fn test_client_creation() {
         let config = AiConfig::new("test_api_key".to_string());
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.api_key, "test_api_key");
     }
 
@@ -360,7 +401,7 @@ mod tests {
     fn test_client_creation_with_custom_timeout() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.timeout_seconds = 30;
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.timeout_seconds, 30);
     }
 
@@ -368,7 +409,7 @@ mod tests {
     fn test_client_creation_with_custom_max_tokens() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.max_tokens = 2000;
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.max_tokens, 2000);
     }
 
@@ -376,7 +417,7 @@ mod tests {
     fn test_client_creation_with_custom_model() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.model = "gpt-4".to_string();
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.model, "gpt-4");
     }
 
@@ -384,14 +425,14 @@ mod tests {
     fn test_client_creation_with_custom_api_url() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.api_url = "https://custom.api.url".to_string();
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.api_url, "https://custom.api.url");
     }
 
     #[tokio::test]
     async fn test_call_with_empty_prompt() {
         let config = AiConfig::new("test_api_key".to_string());
-        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         let result = client.call("", "test text").await;
         // This will fail due to invalid API, but we test the error handling
         assert!(result.is_err());
@@ -400,7 +441,7 @@ mod tests {
     #[tokio::test]
     async fn test_call_with_empty_text() {
         let config = AiConfig::new("test_api_key".to_string());
-        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         let result = client.call("test prompt", "").await;
         // This will fail due to invalid API, but we test the error handling
         assert!(result.is_err());
@@ -409,7 +450,7 @@ mod tests {
     #[tokio::test]
     async fn test_call_with_long_text() {
         let config = AiConfig::new("test_api_key".to_string());
-        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         let long_text = "a".repeat(10000);
         let result = client.call("test prompt", &long_text).await;
         // This will fail due to invalid API, but we test the error handling
@@ -486,7 +527,7 @@ mod tests {
     #[test]
     fn test_config_clone() {
         let config = AiConfig::new("test_api_key".to_string());
-        let client = AiClient::new(config.clone(), Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config.clone(), Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(config.api_key, client.config.api_key);
     }
 
@@ -494,7 +535,7 @@ mod tests {
     fn test_client_timeout_configuration() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.timeout_seconds = 60;
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.timeout_seconds, 60);
     }
 
@@ -502,7 +543,7 @@ mod tests {
     fn test_client_max_tokens_configuration() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.max_tokens = 4096;
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.max_tokens, 4096);
     }
 
@@ -510,7 +551,7 @@ mod tests {
     fn test_client_model_configuration() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.model = "gpt-3.5-turbo".to_string();
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.model, "gpt-3.5-turbo");
     }
 
@@ -518,7 +559,7 @@ mod tests {
     fn test_client_api_url_configuration() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.api_url = "https://api.openai.com/v1/chat/completions".to_string();
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(
             client.config.api_url,
             "https://api.openai.com/v1/chat/completions"
@@ -649,7 +690,7 @@ mod tests {
     fn test_config_zero_timeout() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.timeout_seconds = 0;
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.timeout_seconds, 0);
     }
 
@@ -657,7 +698,7 @@ mod tests {
     fn test_config_zero_max_tokens() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.max_tokens = 0;
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.max_tokens, 0);
     }
 
@@ -665,7 +706,7 @@ mod tests {
     fn test_config_large_max_tokens() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.max_tokens = 100000;
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.max_tokens, 100000);
     }
 
@@ -673,7 +714,7 @@ mod tests {
     fn test_config_empty_model() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.model = "".to_string();
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.model, "");
     }
 
@@ -681,14 +722,14 @@ mod tests {
     fn test_config_empty_api_url() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.api_url = "".to_string();
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.api_url, "");
     }
 
     #[test]
     fn test_config_empty_api_key() {
         let config = AiConfig::new("".to_string());
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.config.api_key, "");
     }
 
@@ -789,7 +830,7 @@ mod tests {
     #[test]
     fn test_client_config_field_access() {
         let config = AiConfig::new("test_key".to_string());
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         // Access all config fields to ensure they're public or accessible
         let _ = client.config.api_key;
         let _ = client.config.api_url;
@@ -825,7 +866,7 @@ mod tests {
     fn test_prompt_validation_too_long() {
         let config = AiConfig::new("test_api_key".to_string());
         let config_service = Arc::new(ExportConfigService::new());
-        let client = AiClient::new(config, config_service.clone());
+        let client = AiClient::new(config, config_service.clone()).unwrap();
         let ai_config = config_service.get_ai_config();
         let long_prompt = "a".repeat(ai_config.max_prompt_length + 1);
         let result = client.validate_prompt(&long_prompt);
@@ -837,7 +878,7 @@ mod tests {
     fn test_text_validation_too_long() {
         let config = AiConfig::new("test_api_key".to_string());
         let config_service = Arc::new(ExportConfigService::new());
-        let client = AiClient::new(config, config_service.clone());
+        let client = AiClient::new(config, config_service.clone()).unwrap();
         let ai_config = config_service.get_ai_config();
         let long_text = "a".repeat(ai_config.max_text_length + 1);
         let result = client.validate_text(&long_text);
@@ -848,7 +889,7 @@ mod tests {
     #[test]
     fn test_config_validation_empty_api_key() {
         let config = AiConfig::new("".to_string());
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         let result = client.validate_config();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("cannot be empty"));
@@ -859,7 +900,7 @@ mod tests {
         let config_service = Arc::new(ExportConfigService::new());
         let ai_config = config_service.get_ai_config();
         let config = AiConfig::new("a".repeat(ai_config.max_api_key_length + 1));
-        let client = AiClient::new(config, config_service);
+        let client = AiClient::new(config, config_service).unwrap();
         let result = client.validate_config();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds maximum length"));
@@ -869,7 +910,7 @@ mod tests {
     fn test_config_validation_empty_api_url() {
         let mut config = AiConfig::new("test_api_key".to_string());
         config.api_url = "".to_string();
-        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         let result = client.validate_config();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("cannot be empty"));
@@ -881,7 +922,7 @@ mod tests {
         let ai_config = config_service.get_ai_config();
         let mut config = AiConfig::new("test_api_key".to_string());
         config.api_url = "a".repeat(ai_config.max_api_url_length + 1);
-        let client = AiClient::new(config, config_service);
+        let client = AiClient::new(config, config_service).unwrap();
         let result = client.validate_config();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds maximum length"));
@@ -890,7 +931,7 @@ mod tests {
     #[test]
     fn test_operation_count() {
         let config = AiConfig::new("test_api_key".to_string());
-        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         assert_eq!(client.get_operation_count(), 0);
         
         // Simulate operation count increment
@@ -901,7 +942,7 @@ mod tests {
     #[test]
     fn test_error_recording() {
         let config = AiConfig::new("test_api_key".to_string());
-        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         
         client.record_error("TEST_ERROR", "Test error message", "test_source");
         
@@ -916,7 +957,7 @@ mod tests {
     #[test]
     fn test_error_state_reset() {
         let config = AiConfig::new("test_api_key".to_string());
-        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let mut client = AiClient::new(config, Arc::new(ExportConfigService::new())).unwrap();
         
         client.record_error("TEST_ERROR", "Test error message", "test_source");
         assert!(client.get_last_error().is_some());
@@ -929,7 +970,7 @@ mod tests {
     fn test_max_prompt_length_accepted() {
         let config = AiConfig::new("test_api_key".to_string());
         let config_service = Arc::new(ExportConfigService::new());
-        let client = AiClient::new(config, config_service.clone());
+        let client = AiClient::new(config, config_service.clone()).unwrap();
         let ai_config = config_service.get_ai_config();
         let prompt = "a".repeat(ai_config.max_prompt_length);
         let result = client.validate_prompt(&prompt);
@@ -940,7 +981,7 @@ mod tests {
     fn test_max_text_length_accepted() {
         let config = AiConfig::new("test_api_key".to_string());
         let config_service = Arc::new(ExportConfigService::new());
-        let client = AiClient::new(config, config_service.clone());
+        let client = AiClient::new(config, config_service.clone()).unwrap();
         let ai_config = config_service.get_ai_config();
         let text = "a".repeat(ai_config.max_text_length);
         let result = client.validate_text(&text);
@@ -952,7 +993,7 @@ mod tests {
         let config_service = Arc::new(ExportConfigService::new());
         let ai_config = config_service.get_ai_config();
         let config = AiConfig::new("a".repeat(ai_config.max_api_key_length));
-        let client = AiClient::new(config, config_service);
+        let client = AiClient::new(config, config_service).unwrap();
         let result = client.validate_config();
         assert!(result.is_ok());
     }
@@ -963,7 +1004,7 @@ mod tests {
         let ai_config = config_service.get_ai_config();
         let mut config = AiConfig::new("test_api_key".to_string());
         config.api_url = "a".repeat(ai_config.max_api_url_length);
-        let client = AiClient::new(config, config_service);
+        let client = AiClient::new(config, config_service).unwrap();
         let result = client.validate_config();
         assert!(result.is_ok());
     }

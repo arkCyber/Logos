@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { logger, LogCategory } from '../utils/logger';
 
-interface EditorState {
+interface EditorState { // eslint-disable-line @typescript-eslint/no-unused-vars
   file_id: string;
   source: string;
   cursor_position: number;
@@ -12,7 +13,7 @@ interface EditorState {
   is_dirty: boolean;
 }
 
-interface PreviewState {
+interface PreviewState { // eslint-disable-line @typescript-eslint/no-unused-vars
   page_count: number;
   current_page: number;
   zoom: number;
@@ -79,7 +80,7 @@ return;
       config
     });
   } catch (error) {
-    console.error('Failed to initialize preview editor:', error);
+    logger.error('Failed to initialize preview editor', error, LogCategory.SYSTEM);
     emit('error', `Failed to initialize editor: ${error}`);
   }
 };
@@ -100,7 +101,7 @@ return;
     cursorPosition.value = position;
     emit('content-changed', newContent);
   } catch (error) {
-    console.error('Failed to update source:', error);
+    logger.error('Failed to update source', error, LogCategory.SYSTEM);
     emit('error', `Failed to update source: ${error}`);
   }
 };
@@ -119,7 +120,7 @@ return;
     cursorPosition.value = position;
     emit('cursor-moved', position);
   } catch (error) {
-    console.error('Failed to move cursor:', error);
+    logger.error('Failed to move cursor', error, LogCategory.SYSTEM);
   }
 };
 
@@ -137,7 +138,7 @@ return;
     selection.value = sel;
     emit('selection-changed', sel);
   } catch (error) {
-    console.error('Failed to set selection:', error);
+    logger.error('Failed to set selection', error, LogCategory.SYSTEM);
   }
 };
 
@@ -155,7 +156,7 @@ return;
       y
     });
   } catch (error) {
-    console.error('Failed to sync cursor to preview:', error);
+    logger.error('Failed to sync cursor to preview', error, LogCategory.SYSTEM);
   }
 };
 

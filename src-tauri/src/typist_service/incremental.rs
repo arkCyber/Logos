@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use std::thread;
-use std::time::Duration;
 
 /// 增量编译缓存条目
 #[derive(Debug, Clone, Serialize, Deserialize)]

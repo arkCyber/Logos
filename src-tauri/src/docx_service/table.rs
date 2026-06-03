@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use super::style::TextStyle;
 
 /// 边框样式
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { MessageCircleMore, HelpCircle } from 'lucide-vue-next';
 
 interface Props {
   showFileBackstage: boolean;
@@ -14,6 +15,8 @@ interface Emits {
   (e: 'toggle-search'): void;
   (e: 'update-title', title: string): void;
   (e: 'toggle-split-view'): void;
+  (e: 'toggle-ai-sidebar'): void;
+  (e: 'toggle-help'): void;
 }
 
 const props = defineProps<Props>();
@@ -22,6 +25,7 @@ const emit = defineEmits<Emits>();
 const isMacOS = ref(false);
 const isEditingTitle = ref(false);
 const editingTitle = ref('');
+const autoSave = ref(true);
 
 const startEditingTitle = () => {
   isEditingTitle.value = true;
@@ -48,6 +52,10 @@ const handleTitleKeydown = (e: KeyboardEvent) => {
   }
 };
 
+const handleToggleAISidebar = () => {
+  emit('toggle-ai-sidebar');
+};
+
 onMounted(() => {
   isMacOS.value =
     typeof navigator !== 'undefined' &&
@@ -63,34 +71,46 @@ onMounted(() => {
     aria-label="快速访问工具栏"
     data-tauri-drag-region
   >
+    <!-- 左侧区域：自动保存与快速访问按钮 -->
     <div class="qat-left">
-      <button
-        class="qat-button file-button"
-        title="文件"
-        aria-label="文件"
-        @click="emit('toggle-file-backstage')"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="16" y1="13" x2="8" y2="13" />
-          <line x1="16" y1="17" x2="8" y2="17" />
-          <polyline points="10 9 9 9 8 9" />
+      <div class="qat-autosave-container">
+        <span class="autosave-text">自动保存</span>
+        <div class="autosave-toggle" :class="{ active: autoSave }" @click="autoSave = !autoSave">
+          <div class="autosave-slider"></div>
+        </div>
+      </div>
+
+      <button class="qat-button" title="保存 (Ctrl+S)" aria-label="保存" @click="emit('save')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
         </svg>
-        <span>文件</span>
+      </button>
+
+      <button class="qat-button" title="撤销 (Ctrl+Z)" aria-label="撤销" @click="emit('undo')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7v6h6" />
+          <path d="M21 17a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6 2.3L3 13" />
+        </svg>
+      </button>
+
+      <button class="qat-button" title="重做 (Ctrl+Y)" aria-label="重做" @click="emit('redo')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 7v6h-6" />
+          <path d="M3 17a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6 2.3l3 3.7" />
+        </svg>
+      </button>
+
+      <button class="qat-button dropdown-trigger" title="自定义快速访问工具栏">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+          <path d="m6 9 6 6 6-9"/>
+        </svg>
       </button>
     </div>
-    <div class="qat-title" aria-label="文档标题">
+
+    <!-- 中间左侧：文档标题 -->
+    <div class="qat-title-container">
       <input
         v-if="isEditingTitle"
         ref="titleInput"
@@ -101,125 +121,77 @@ onMounted(() => {
         @click.stop
       />
       <span v-else class="qat-title-text" @dblclick="startEditingTitle">
-        {{ props.documentTitle ? props.documentTitle + ' — LOGOS' : '未命名文档 — LOGOS' }}
+        {{ props.documentTitle ? props.documentTitle : '未命名文档' }}
       </span>
+      <span class="qat-app-suffix">- Logos</span>
     </div>
-    <div class="qat-center">
-      <button class="qat-button" title="保存 (Ctrl+S)" aria-label="保存" @click="emit('save')">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-          <polyline points="17 21 17 13 7 13 7 21" />
-          <polyline points="7 3 7 8 15 8" />
+
+    <!-- 中间：大搜索框 -->
+    <div class="qat-search-container">
+      <div class="qat-search-box" @click="emit('toggle-search')">
+        <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <span class="search-placeholder">搜索</span>
+        <svg class="mic-icon" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- 右侧区域：高级功能按钮、用户头像、窗口控制 -->
+    <div class="qat-right">
+      <button class="qat-right-btn text-btn editing-btn" title="更改编辑模式">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+        </svg>
+        <span>正在编辑</span>
+        <svg class="arrow-down" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+          <path d="m6 9 6 6 6-9"/>
         </svg>
       </button>
-      <button class="qat-button" title="撤销 (Ctrl+Z)" aria-label="撤销" @click="emit('undo')">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M3 7v6h6" />
-          <path d="M21 17a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6 2.3L3 13" />
-        </svg>
-      </button>
-      <button class="qat-button" title="重做 (Ctrl+Y)" aria-label="重做" @click="emit('redo')">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="M21 7v6h-6" />
-          <path d="M3 17a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6 2.3l3 3.7" />
-        </svg>
-      </button>
-      <div class="qat-separator"></div>
-      <button
-        class="qat-button"
-        title="双显示 (Ctrl+D)"
-        aria-label="双显示"
-        @click="emit('toggle-split-view')"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
+
+      <button class="qat-right-btn share-btn" title="双开窗口" @click="emit('toggle-split-view')">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
           <line x1="12" y1="3" x2="12" y2="21" />
         </svg>
+        <span>双窗</span>
       </button>
+
       <div class="qat-separator"></div>
-      <button
-        class="qat-button"
-        title="查找 (Ctrl+F)"
-        aria-label="查找"
-        @click="emit('toggle-search')"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <path d="m21 21-4.3-4.3" />
-        </svg>
+
+      <!-- Help Button -->
+      <button class="qat-button help-btn" title="帮助 (F1)" @click="emit('toggle-help')">
+        <HelpCircle :size="18" />
       </button>
+
+      <!-- 用户头像 -->
+      <div class="qat-avatar" title="AI 助手" @click="handleToggleAISidebar">
+        <MessageCircleMore :size="20" />
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
 .quick-access-toolbar {
-  height: 36px;
+  height: 48px;
   background: var(--word-ribbon-bg);
   border-bottom: 1px solid var(--word-border);
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  gap: 4px;
+  padding: 0 4px 0 8px;
+  gap: 12px;
   flex-shrink: 0;
   position: relative;
-  /* Allow the bar to be used as Tauri drag region */
   -webkit-app-region: drag;
   app-region: drag;
   user-select: none;
 }
 
-/* macOS: shift content right to clear traffic-light buttons (≈78 px) */
+/* macOS traffic lights offset */
 .quick-access-toolbar.macos-titlebar {
   padding-left: 80px;
 }
@@ -227,8 +199,8 @@ onMounted(() => {
 /* All interactive children must opt out of drag region */
 .quick-access-toolbar button,
 .quick-access-toolbar input,
-.quick-access-toolbar select,
-.quick-access-toolbar a {
+.quick-access-toolbar .autosave-toggle,
+.quick-access-toolbar .qat-avatar {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -236,116 +208,249 @@ onMounted(() => {
 .qat-left {
   display: flex;
   align-items: center;
-  gap: 2px;
-  z-index: 1;
+  gap: 4px;
 }
 
-.qat-center {
+/* AutoSave Switch Style */
+.qat-autosave-container {
   display: flex;
   align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  z-index: 1;
+  gap: 6px;
+  margin-right: 8px;
 }
 
-.qat-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+.autosave-text {
   font-family: var(--word-font-ui);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
   color: var(--word-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 400px;
-  pointer-events: none;
-  user-select: none;
+  font-weight: 500;
 }
 
-/* On macOS, shift title right to account for traffic lights */
-.macos-titlebar .qat-title {
-  left: calc(50% + 40px);
-}
-
-.qat-title-text {
+.autosave-toggle {
+  width: 32px;
+  height: 16px;
+  background-color: #a19f9d;
+  border-radius: 8px;
+  position: relative;
   cursor: pointer;
-  user-select: none;
+  transition: background-color 0.15s ease;
 }
 
-.qat-title-input {
-  font-family: var(--word-font-ui);
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--word-text-primary);
-  background: var(--word-button-bg);
-  border: 1px solid var(--word-button-border);
-  border-radius: 2px;
-  padding: 2px 6px;
-  width: 300px;
-  max-width: 400px;
-  outline: none;
-  text-align: center;
+.autosave-toggle.active {
+  background-color: var(--word-accent);
 }
 
-.qat-title-input:focus {
-  border-color: var(--word-button-border-hover);
-  background: var(--word-button-hover);
+.autosave-slider {
+  width: 10px;
+  height: 10px;
+  background-color: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.15s ease;
+}
+
+.autosave-toggle.active .autosave-slider {
+  transform: translateX(16px);
 }
 
 .qat-button {
-  height: 24px;
-  min-width: 24px;
-  padding: 0 6px;
-  background: var(--word-button-bg);
-  border: 1px solid var(--word-button-border);
-  border-radius: 2px;
+  height: 32px;
+  width: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
   color: var(--word-text-primary);
-  font-family: var(--word-font-ui);
-  font-size: 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
   transition: all 0.1s ease;
 }
 
 .qat-button:hover {
   background: var(--word-button-hover);
-  border-color: var(--word-button-border-hover);
 }
 
-.qat-button:active {
-  background: var(--word-button-active);
-  border-color: var(--word-button-pressed);
+.qat-button.dropdown-trigger {
+  width: 14px;
 }
 
-.qat-button:disabled {
-  background: var(--word-button-disabled-bg);
-  color: var(--word-button-disabled-text);
-  cursor: not-allowed;
+.qat-button.help-btn {
+  color: var(--word-text-secondary, #666);
 }
 
-.file-button {
-  min-width: 60px;
-  font-weight: var(--word-font-weight-semibold);
+.qat-button.help-btn:hover {
+  color: var(--word-accent, #007bff);
+  background-color: var(--word-button-hover, #f5f5f5);
 }
 
-.file-button svg {
-  width: 18px;
-  height: 18px;
+/* Title container styling */
+.qat-title-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--word-font-ui);
+  font-size: 12px;
+  color: var(--word-text-primary);
+  font-weight: 500;
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qat-title-text {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.qat-app-suffix {
+  color: var(--word-text-secondary);
+}
+
+.qat-title-input {
+  font-family: var(--word-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--word-text-primary);
+  background: var(--word-button-bg);
+  border: 1px solid var(--word-button-border);
+  border-radius: 2px;
+  padding: 1px 6px;
+  width: 140px;
+  outline: none;
+}
+
+/* Wide Search Box styling */
+.qat-search-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  max-width: 322px;
+  margin: 0 auto;
+}
+
+.qat-search-box {
+  width: 100%;
+  height: 28px;
+  background: var(--word-input-bg, #f3f2f1);
+  border: 1px solid var(--word-input-border, #edebe9);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.qat-search-box:hover {
+  background: #edebe9;
+  border-color: #d2d0ce;
+}
+
+.search-icon, .mic-icon {
+  color: #605e5c;
+  flex-shrink: 0;
+}
+
+.search-placeholder {
+  font-family: var(--word-font-ui);
+  font-size: 12px;
+  color: #605e5c;
+  flex: 1;
+}
+
+/* Right buttons section styling */
+.qat-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.qat-right-btn {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  font-family: var(--word-font-ui);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  color: var(--word-text-primary);
+}
+
+.qat-right-btn.text-btn:hover {
+  background: var(--word-button-hover);
+}
+
+.qat-right-btn .arrow-down {
+  margin-left: -2px;
+  color: var(--word-text-secondary);
+}
+
+/* Word Style Blue Share Button */
+.qat-right-btn.share-btn {
+  background-color: transparent;
+  color: var(--word-text-primary);
+  font-weight: 500;
+  border-radius: 4px;
+}
+
+.qat-right-btn.share-btn:hover {
+  background-color: var(--word-button-hover);
 }
 
 .qat-separator {
   width: 1px;
-  height: 20px;
-  background: var(--word-divider);
+  height: 18px;
+  background: var(--word-divider, #edebe9);
   margin: 0 4px;
 }
 
-.qat-button svg {
-  flex-shrink: 0;
+/* Avatar styling */
+.qat-avatar {
+  width: 32px;
+  height: 32px;
+  background-color: transparent;
+  color: var(--word-text-primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--word-button-border);
+}
+
+.qat-avatar:hover {
+  background-color: var(--word-button-hover);
+}
+
+.qat-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: 8px;
+}
+
+.qat-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
 }
 </style>

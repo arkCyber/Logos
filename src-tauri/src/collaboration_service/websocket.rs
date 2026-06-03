@@ -2,8 +2,36 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tokio::sync::broadcast;
 use crate::config_service::ExportConfigService;
+
+/// Maximum user ID length to prevent DoS attacks
+const MAX_USER_ID_LENGTH: usize = 256;
+
+/// Maximum user name length
+const MAX_USER_NAME_LENGTH: usize = 256;
+
+/// Maximum document ID length
+const MAX_DOCUMENT_ID_LENGTH: usize = 256;
+
+/// Maximum number of users per document
+const MAX_USERS_PER_DOCUMENT: usize = 100;
+
+/// Maximum number of documents
+const MAX_DOCUMENTS: usize = 10_000;
+
+/// Maximum message size to prevent memory issues
+const MAX_MESSAGE_SIZE: usize = 1_000_000; // 1MB
+
+/// Performance threshold for warning (in milliseconds)
+const PERFORMANCE_WARNING_THRESHOLD_MS: u128 = 100;
+
+/// Performance threshold for critical warning (in milliseconds)
+const PERFORMANCE_CRITICAL_THRESHOLD_MS: u128 = 500;
+
+/// Presence timeout in seconds
+const PRESENCE_TIMEOUT_SECONDS: i64 = 300; // 5 minutes
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PresenceInfo {
@@ -63,6 +91,10 @@ pub struct CollaborationServer {
 
 #[allow(dead_code)]
 impl CollaborationServer {
+    /// Creates a new collaboration server instance
+    /// 
+    /// # Returns
+    /// A new CollaborationServer instance
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(1000);
         Self {
@@ -72,11 +104,34 @@ impl CollaborationServer {
         }
     }
 
+    /// Handles incoming collaboration messages
+    /// 
+    /// # Arguments
+    /// * `message` - The collaboration message to handle
+    /// 
+    /// # Returns
+    /// Result containing the response message or an error
+    /// 
+    /// # Performance
+    /// Logs a warning if processing takes longer than PERFORMANCE_WARNING_THRESHOLD_MS
+    /// Logs a critical warning if processing takes longer than PERFORMANCE_CRITICAL_THRESHOLD_MS
+    /// 
+    /// # Security
+    /// Validates input sizes to prevent DoS attacks
     pub fn handle_message(
         &self,
         message: CollaborationMessage,
     ) -> Result<CollaborationMessage, String> {
-        match message {
+        let start_time = Instant::now();
+        
+        // Validate message size
+        let message_size = serde_json::to_vec(&message).map(|v| v.len()).unwrap_or(0);
+        if message_size > MAX_MESSAGE_SIZE {
+            eprintln!("Collaboration: message exceeds maximum size of {} bytes", MAX_MESSAGE_SIZE);
+            return Err(format!("Message exceeds maximum size of {} bytes", MAX_MESSAGE_SIZE));
+        }
+
+        let result = match message {
             CollaborationMessage::Join {
                 user_id,
                 user_name,
@@ -102,20 +157,64 @@ impl CollaborationServer {
                 since_version,
             } => self.handle_sync_request(user_id, document_id, since_version),
             _ => Err("Unhandled message type".to_string()),
+        };
+
+        // Performance monitoring
+        let elapsed = start_time.elapsed();
+        if elapsed.as_millis() > PERFORMANCE_CRITICAL_THRESHOLD_MS {
+            eprintln!("Collaboration CRITICAL performance warning: took {}ms", elapsed.as_millis());
+        } else if elapsed.as_millis() > PERFORMANCE_WARNING_THRESHOLD_MS {
+            eprintln!("Collaboration performance warning: took {}ms", elapsed.as_millis());
         }
+
+        result
     }
 
+    /// Handles user join to a document
+    /// 
+    /// # Arguments
+    /// * `user_id` - The user ID
+    /// * `user_name` - The user name
+    /// * `document_id` - The document ID
+    /// 
+    /// # Returns
+    /// Result containing the presence message or an error
+    /// 
+    /// # Security
+    /// Validates input sizes to prevent DoS attacks
     fn handle_join(
         &self,
         user_id: String,
         user_name: String,
         document_id: String,
     ) -> Result<CollaborationMessage, String> {
+        // Input validation
+        if user_id.is_empty() {
+            return Err("User ID cannot be empty".to_string());
+        }
+        if user_id.len() > MAX_USER_ID_LENGTH {
+            return Err(format!("User ID exceeds maximum length of {}", MAX_USER_ID_LENGTH));
+        }
+        if user_name.len() > MAX_USER_NAME_LENGTH {
+            return Err(format!("User name exceeds maximum length of {}", MAX_USER_NAME_LENGTH));
+        }
+        if document_id.is_empty() {
+            return Err("Document ID cannot be empty".to_string());
+        }
+        if document_id.len() > MAX_DOCUMENT_ID_LENGTH {
+            return Err(format!("Document ID exceeds maximum length of {}", MAX_DOCUMENT_ID_LENGTH));
+        }
+
         // Create document if it doesn't exist
         let mut documents = self
             .documents
             .lock()
             .map_err(|e| format!("Failed to lock documents: {}", e))?;
+
+        // Safety check: prevent too many documents
+        if !documents.contains_key(&document_id) && documents.len() >= MAX_DOCUMENTS {
+            return Err(format!("Maximum document limit of {} reached", MAX_DOCUMENTS));
+        }
 
         if !documents.contains_key(&document_id) {
             let config_service = Arc::new(ExportConfigService::new());
@@ -138,6 +237,12 @@ impl CollaborationServer {
         let doc_presence = presence
             .entry(document_id.clone())
             .or_insert_with(HashMap::new);
+
+        // Safety check: prevent too many users per document
+        if !doc_presence.contains_key(&user_id) && doc_presence.len() >= MAX_USERS_PER_DOCUMENT {
+            return Err(format!("Maximum users per document limit of {} reached", MAX_USERS_PER_DOCUMENT));
+        }
+
         doc_presence.insert(
             user_id.clone(),
             PresenceInfo {
@@ -168,11 +273,27 @@ impl CollaborationServer {
         })
     }
 
+    /// Handles user leave from a document
+    /// 
+    /// # Arguments
+    /// * `user_id` - The user ID
+    /// * `document_id` - The document ID
+    /// 
+    /// # Returns
+    /// Result containing the leave message or an error
     fn handle_leave(
         &self,
         user_id: String,
         document_id: String,
     ) -> Result<CollaborationMessage, String> {
+        // Input validation
+        if user_id.is_empty() {
+            return Err("User ID cannot be empty".to_string());
+        }
+        if document_id.is_empty() {
+            return Err("Document ID cannot be empty".to_string());
+        }
+
         let mut presence = self
             .presence
             .lock()
@@ -192,12 +313,29 @@ impl CollaborationServer {
         })
     }
 
+    /// Handles operation application to a document
+    /// 
+    /// # Arguments
+    /// * `user_id` - The user ID
+    /// * `document_id` - The document ID
+    /// * `operation` - The CRDT operation to apply
+    /// 
+    /// # Returns
+    /// Result containing the sync response or an error
     fn handle_operation(
         &self,
         user_id: String,
         document_id: String,
         operation: super::crdt::CRDTOperation,
     ) -> Result<CollaborationMessage, String> {
+        // Input validation
+        if user_id.is_empty() {
+            return Err("User ID cannot be empty".to_string());
+        }
+        if document_id.is_empty() {
+            return Err("Document ID cannot be empty".to_string());
+        }
+
         let mut documents = self
             .documents
             .lock()
@@ -227,12 +365,29 @@ impl CollaborationServer {
         })
     }
 
+    /// Handles presence updates
+    /// 
+    /// # Arguments
+    /// * `user_id` - The user ID
+    /// * `document_id` - The document ID
+    /// * `presence` - The presence information
+    /// 
+    /// # Returns
+    /// Result containing the presence message or an error
     fn handle_presence(
         &self,
         user_id: String,
         document_id: String,
         presence: PresenceInfo,
     ) -> Result<CollaborationMessage, String> {
+        // Input validation
+        if user_id.is_empty() {
+            return Err("User ID cannot be empty".to_string());
+        }
+        if document_id.is_empty() {
+            return Err("Document ID cannot be empty".to_string());
+        }
+
         let mut presence_map = self
             .presence
             .lock()
@@ -250,12 +405,29 @@ impl CollaborationServer {
         })
     }
 
+    /// Handles sync request for document operations
+    /// 
+    /// # Arguments
+    /// * `user_id` - The user ID
+    /// * `document_id` - The document ID
+    /// * `since_version` - The version to sync from
+    /// 
+    /// # Returns
+    /// Result containing the sync response or an error
     fn handle_sync_request(
         &self,
         user_id: String,
         document_id: String,
         since_version: u64,
     ) -> Result<CollaborationMessage, String> {
+        // Input validation
+        if user_id.is_empty() {
+            return Err("User ID cannot be empty".to_string());
+        }
+        if document_id.is_empty() {
+            return Err("Document ID cannot be empty".to_string());
+        }
+
         let documents = self
             .documents
             .lock()
@@ -275,11 +447,30 @@ impl CollaborationServer {
         })
     }
 
+    /// Subscribes to operation broadcasts
+    /// 
+    /// # Returns
+    /// A broadcast receiver for collaboration messages
     pub fn subscribe_operations(&self) -> broadcast::Receiver<CollaborationMessage> {
         self.operation_channel.subscribe()
     }
 
+    /// Gets users present in a document
+    /// 
+    /// # Arguments
+    /// * `document_id` - The document ID
+    /// 
+    /// # Returns
+    /// Result containing the list of presence info or an error
     pub fn get_document_users(&self, document_id: &str) -> Result<Vec<PresenceInfo>, String> {
+        // Input validation
+        if document_id.is_empty() {
+            return Err("Document ID cannot be empty".to_string());
+        }
+        if document_id.len() > MAX_DOCUMENT_ID_LENGTH {
+            return Err(format!("Document ID exceeds maximum length of {}", MAX_DOCUMENT_ID_LENGTH));
+        }
+
         let presence = self
             .presence
             .lock()
@@ -290,6 +481,26 @@ impl CollaborationServer {
         } else {
             Ok(Vec::new())
         }
+    }
+
+    /// Gets the number of active documents
+    /// 
+    /// # Returns
+    /// The number of documents
+    pub fn document_count(&self) -> usize {
+        let documents = self.documents.lock().unwrap();
+        documents.len()
+    }
+
+    /// Clears all documents and presence data
+    /// 
+    /// # Warning
+    /// This will delete all collaboration data
+    pub fn clear_all(&self) {
+        let mut documents = self.documents.lock().unwrap();
+        let mut presence = self.presence.lock().unwrap();
+        documents.clear();
+        presence.clear();
     }
 }
 
@@ -1015,5 +1226,148 @@ mod tests {
 
         assert_eq!(users1.len(), 1);
         assert_eq!(users2.len(), 1);
+    }
+
+    #[test]
+    fn test_max_user_id_length() {
+        let server = CollaborationServer::new();
+        let long_id = "a".repeat(MAX_USER_ID_LENGTH + 1);
+        let message = CollaborationMessage::Join {
+            user_id: long_id,
+            user_name: "User 1".to_string(),
+            document_id: "doc1".to_string(),
+        };
+        let result = server.handle_message(message);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_max_user_name_length() {
+        let server = CollaborationServer::new();
+        let long_name = "a".repeat(MAX_USER_NAME_LENGTH + 1);
+        let message = CollaborationMessage::Join {
+            user_id: "user1".to_string(),
+            user_name: long_name,
+            document_id: "doc1".to_string(),
+        };
+        let result = server.handle_message(message);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_max_document_id_length() {
+        let server = CollaborationServer::new();
+        let long_id = "a".repeat(MAX_DOCUMENT_ID_LENGTH + 1);
+        let message = CollaborationMessage::Join {
+            user_id: "user1".to_string(),
+            user_name: "User 1".to_string(),
+            document_id: long_id,
+        };
+        let result = server.handle_message(message);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_user_id() {
+        let server = CollaborationServer::new();
+        let message = CollaborationMessage::Join {
+            user_id: "".to_string(),
+            user_name: "User 1".to_string(),
+            document_id: "doc1".to_string(),
+        };
+        let result = server.handle_message(message);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_document_id() {
+        let server = CollaborationServer::new();
+        let message = CollaborationMessage::Join {
+            user_id: "user1".to_string(),
+            user_name: "User 1".to_string(),
+            document_id: "".to_string(),
+        };
+        let result = server.handle_message(message);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_document_count() {
+        let server = CollaborationServer::new();
+        assert_eq!(server.document_count(), 0);
+        
+        let message = CollaborationMessage::Join {
+            user_id: "user1".to_string(),
+            user_name: "User 1".to_string(),
+            document_id: "doc1".to_string(),
+        };
+        server.handle_message(message).unwrap();
+        
+        assert_eq!(server.document_count(), 1);
+    }
+
+    #[test]
+    fn test_clear_all() {
+        let server = CollaborationServer::new();
+        
+        let message = CollaborationMessage::Join {
+            user_id: "user1".to_string(),
+            user_name: "User 1".to_string(),
+            document_id: "doc1".to_string(),
+        };
+        server.handle_message(message).unwrap();
+        
+        assert_eq!(server.document_count(), 1);
+        
+        server.clear_all();
+        
+        assert_eq!(server.document_count(), 0);
+        assert_eq!(server.get_document_users("doc1").unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_max_documents_limit() {
+        let server = CollaborationServer::new();
+        
+        // Try to add more documents than MAX_DOCUMENTS
+        for i in 0..=MAX_DOCUMENTS {
+            let message = CollaborationMessage::Join {
+                user_id: format!("user{}", i),
+                user_name: format!("User {}", i),
+                document_id: format!("doc{}", i),
+            };
+            if i < MAX_DOCUMENTS {
+                assert!(server.handle_message(message).is_ok());
+            } else {
+                assert!(server.handle_message(message).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn test_max_users_per_document() {
+        let server = CollaborationServer::new();
+        
+        // First join to create the document
+        let message = CollaborationMessage::Join {
+            user_id: "user0".to_string(),
+            user_name: "User 0".to_string(),
+            document_id: "doc1".to_string(),
+        };
+        server.handle_message(message).unwrap();
+        
+        // Try to add more users than MAX_USERS_PER_DOCUMENT
+        for i in 1..=MAX_USERS_PER_DOCUMENT {
+            let message = CollaborationMessage::Join {
+                user_id: format!("user{}", i),
+                user_name: format!("User {}", i),
+                document_id: "doc1".to_string(),
+            };
+            if i < MAX_USERS_PER_DOCUMENT {
+                assert!(server.handle_message(message).is_ok());
+            } else {
+                assert!(server.handle_message(message).is_err());
+            }
+        }
     }
 }

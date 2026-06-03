@@ -4,6 +4,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { logger, LogCategory } from '../utils/logger';
 
 // CRDT 操作类型
 export enum CRDTType {
@@ -145,7 +146,7 @@ export class CollaborationService {
         });
       }
     } catch (error) {
-      console.error('Error leaving collaboration:', error);
+      logger.error('Error leaving collaboration', error, LogCategory.SYSTEM);
     }
 
     this.status = ConnectionStatus.Disconnected;
@@ -180,7 +181,7 @@ export class CollaborationService {
         operation
       });
     } catch (error) {
-      console.error('Error sending operation:', error);
+      logger.error('Error sending operation', error, LogCategory.SYSTEM);
       this.onErrorCallbacks.forEach((callback) => callback(error as Error));
     }
   }
@@ -200,7 +201,7 @@ export class CollaborationService {
         presence
       });
     } catch (error) {
-      console.error('Error sending presence:', error);
+      logger.error('Error sending presence', error, LogCategory.SYSTEM);
       this.onErrorCallbacks.forEach((callback) => callback(error as Error));
     }
   }
@@ -221,7 +222,7 @@ export class CollaborationService {
       });
       return operations;
     } catch (error) {
-      console.error('Error requesting sync:', error);
+      logger.error('Error requesting sync', error, LogCategory.SYSTEM);
       this.onErrorCallbacks.forEach((callback) => callback(error as Error));
       return [];
     }
@@ -329,13 +330,16 @@ export class CollaborationService {
     this.isProcessingQueue = true;
 
     while (this.messageQueue.length > 0 && this.status === ConnectionStatus.Connected) {
-      const message = this.messageQueue.shift()!;
+      const message = this.messageQueue.shift();
+      if (!message) {
+break;
+}
       try {
         if (message.message_type === 'operation') {
           await this.sendOperation(message.operation);
         }
       } catch (error) {
-        console.error('Error processing queued message:', error);
+        logger.error('Error processing queued message', error, LogCategory.SYSTEM);
         // 重新加入队列
         this.messageQueue.unshift(message);
         break;
@@ -361,9 +365,11 @@ export class CollaborationService {
     this.reconnectAttempts++;
 
     try {
-      await this.connect(this.documentId!, this.userId!, this.userName!);
+      if (this.documentId && this.userId && this.userName) {
+        await this.connect(this.documentId, this.userId, this.userName);
+      }
     } catch (error) {
-      console.error('Reconnection failed:', error);
+      logger.error('Reconnection failed', error, LogCategory.SYSTEM);
       // 指数退避
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
       this.reconnectTimer = setTimeout(() => this.reconnect(), this.reconnectDelay);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed } from 'vue';
+import { onMounted, onUnmounted, ref, computed } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 // Load jQuery first and make it globally available BEFORE importing luckysheet
 import $ from 'jquery';
@@ -14,6 +14,7 @@ import 'luckysheet/dist/plugins/plugins.css';
 import 'luckysheet/dist/css/luckysheet.css';
 import 'luckysheet/dist/luckysheet.umd';
 import { invoke } from '@tauri-apps/api/core';
+import { logger, LogCategory } from '../utils/logger';
 
 // ============================================================================
 // 组件定义和事件
@@ -27,7 +28,7 @@ const emit = defineEmits<{
 // ============================================================================
 let luckysheetInstance: any = null; // Luckysheet 实例
 const currentDocId = ref('default'); // 当前文档 ID
-const isLoading = ref(false); // 加载状态
+const isLoading = ref(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 const lastAction = ref(''); // 最后操作
 const showFormulaBar = ref(true); // 显示公式栏
 const selectedCellInfo = ref({ row: 0, col: 0, value: '' }); // 选中的单元格信息
@@ -329,9 +330,9 @@ const syncSheetData = async () => {
       sheetDataJson
     });
     
-    console.log('Spreadsheet data synced successfully');
+    logger.debug('Spreadsheet data synced successfully', {}, LogCategory.SYSTEM);
   } catch (error) {
-    console.error('Failed to sync spreadsheet data:', error);
+    logger.error('Failed to sync spreadsheet data', error, LogCategory.SYSTEM);
   }
 };
 
@@ -362,10 +363,10 @@ const saveSpreadsheetAsTypst = async () => {
       await invoke('save_file', { filePath, content: typstContent });
       
       lastAction.value = '保存为Typst文件';
-      console.log('Spreadsheet saved as Typst successfully');
+      logger.debug('Spreadsheet saved as Typst successfully', {}, LogCategory.SYSTEM);
     }
   } catch (error) {
-    console.error('Failed to save spreadsheet as Typst:', error);
+    logger.error('Failed to save spreadsheet as Typst', error, LogCategory.SYSTEM);
   }
 };
 
@@ -445,10 +446,10 @@ const loadSheetData = async () => {
     if (sheetDataJson) {
       const sheetData = JSON.parse(sheetDataJson as string);
       luckysheetInstance.loadData(sheetData);
-      console.log('Spreadsheet data loaded successfully');
+      logger.debug('Spreadsheet data loaded successfully', {}, LogCategory.SYSTEM);
     }
   } catch (error) {
-    console.error('Failed to load spreadsheet data:', error);
+    logger.error('Failed to load spreadsheet data', error, LogCategory.SYSTEM);
   }
 };
 

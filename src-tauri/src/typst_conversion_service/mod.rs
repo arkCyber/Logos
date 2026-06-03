@@ -4,9 +4,11 @@
 
 pub mod converter;
 pub mod slide_converter;
+pub mod typst_to_html;
 
 pub use converter::HtmlToTypstConverter;
 pub use slide_converter::HtmlToTypstSlideConverter;
+pub use typst_to_html::TypstToHtmlConverter;
 
 use serde::{Deserialize, Serialize};
 

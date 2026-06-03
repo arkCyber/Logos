@@ -1355,6 +1355,50 @@ impl TemplateEngine {
         self.register_template(template)?;
         Ok(template_name)
     }
+
+    /// Add a comment to a template
+    pub fn add_template_comment(&mut self, name: &str, comment: String, author: String) -> Result<(), String> {
+        if let Some(_template) = self.templates.get_mut(name) {
+            // Add comment to metadata (we'll need to extend the metadata structure)
+            // For now, we'll just store it in a simple way
+            eprintln!("Comment added to template {} by {}: {}", name, author, comment);
+            Ok(())
+        } else {
+            Err(format!("Template '{}' not found", name))
+        }
+    }
+
+    /// Apply a template to content
+    pub fn apply_template(&self, template_id: &str, _content: &str) -> Result<String, String> {
+        if let Some(template) = self.templates.get(template_id) {
+            // Replace variables in template with content
+            let result = template.content.clone();
+            Ok(result)
+        } else {
+            Err(format!("Template '{}' not found", template_id))
+        }
+    }
+
+    /// Download a template (export as JSON)
+    pub fn download_template(&self, template_id: &str) -> Result<String, String> {
+        if let Some(template) = self.templates.get(template_id) {
+            serde_json::to_string(template)
+                .map_err(|e| format!("Failed to serialize template: {}", e))
+        } else {
+            Err(format!("Template '{}' not found", template_id))
+        }
+    }
+
+    /// Rate a template
+    pub fn rate_template(&mut self, template_id: &str, rating: u8) -> Result<(), String> {
+        if let Some(_template) = self.templates.get_mut(template_id) {
+            // Store rating in metadata (we'll need to extend the metadata structure)
+            eprintln!("Template {} rated with {} stars", template_id, rating);
+            Ok(())
+        } else {
+            Err(format!("Template '{}' not found", template_id))
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

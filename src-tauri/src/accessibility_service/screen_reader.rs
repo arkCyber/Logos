@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use crate::error_handling::{ErrorContext, ErrorSeverity};
+
+/// Maximum announcement message length to prevent memory exhaustion
+const MAX_ANNOUNCEMENT_LENGTH: usize = 10000;
+
+/// Maximum number of announcements to prevent memory exhaustion
+const MAX_ANNOUNCEMENTS: usize = 100;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -21,60 +28,146 @@ pub struct ScreenReaderAnnouncer {
 }
 
 impl ScreenReaderAnnouncer {
+    /// Creates a new screen reader announcer instance
+    /// 
+    /// # Returns
+    /// A new ScreenReaderAnnouncer instance
     pub fn new() -> Self {
         Self {
             announcements: Arc::new(Mutex::new(Vec::new())),
-            max_announcements: 100,
+            max_announcements: MAX_ANNOUNCEMENTS,
         }
     }
 
+    /// Get the maximum announcement length constant
+    /// 
+    /// # Returns
+    /// The maximum announcement message length in characters
+    pub fn max_announcement_length() -> usize {
+        MAX_ANNOUNCEMENT_LENGTH
+    }
+
+    /// Get the maximum announcements constant
+    /// 
+    /// # Returns
+    /// The maximum number of announcements
+    pub fn max_announcements() -> usize {
+        MAX_ANNOUNCEMENTS
+    }
+
     /// Announce a message to screen readers
-    pub fn announce(&self, message: String, priority: AnnouncementPriority) {
+    /// 
+    /// # Arguments
+    /// * `message` - The message to announce
+    /// * `priority` - The priority of the announcement
+    /// 
+    /// # Security
+    /// Validates message length to prevent memory exhaustion
+    pub fn announce(&self, message: String, priority: AnnouncementPriority) -> Result<(), String> {
+        // Validate message length
+        if message.len() > MAX_ANNOUNCEMENT_LENGTH {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "MESSAGE_TOO_LONG",
+                &format!("Announcement message exceeds maximum length of {} characters", MAX_ANNOUNCEMENT_LENGTH),
+                "screen_reader",
+            );
+            eprintln!("[Screen Reader] Error: {}", context.message);
+            return Err(context.message);
+        }
+
         let announcement = ScreenReaderAnnouncement {
             message,
             priority,
             timestamp: chrono::Utc::now(),
         };
 
-        let mut announcements = self.announcements.lock().unwrap();
+        let mut announcements = self.announcements.lock().map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "MUTEX_LOCK_FAILED",
+                &format!("Failed to lock announcements mutex: {}", e),
+                "screen_reader",
+            );
+            eprintln!("[Screen Reader] Error: {}", context.message);
+            context.message
+        })?;
         announcements.push(announcement);
 
         // Enforce max announcements limit
         if announcements.len() > self.max_announcements {
             announcements.remove(0);
         }
+        Ok(())
     }
 
     /// Get all announcements
-    pub fn get_announcements(&self) -> Vec<ScreenReaderAnnouncement> {
-        let announcements = self.announcements.lock().unwrap();
-        announcements.clone()
+    pub fn get_announcements(&self) -> Result<Vec<ScreenReaderAnnouncement>, String> {
+        let announcements = self.announcements.lock().map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "MUTEX_LOCK_FAILED",
+                &format!("Failed to lock announcements mutex: {}", e),
+                "screen_reader",
+            );
+            eprintln!("[Screen Reader] Error: {}", context.message);
+            context.message
+        })?;
+        Ok(announcements.clone())
     }
 
     /// Clear all announcements
-    pub fn clear(&self) {
-        let mut announcements = self.announcements.lock().unwrap();
+    pub fn clear(&self) -> Result<(), String> {
+        let mut announcements = self.announcements.lock().map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "MUTEX_LOCK_FAILED",
+                &format!("Failed to lock announcements mutex: {}", e),
+                "screen_reader",
+            );
+            eprintln!("[Screen Reader] Error: {}", context.message);
+            context.message
+        })?;
         announcements.clear();
+        Ok(())
     }
 
     /// Get announcements by priority
     #[allow(dead_code)]
-    pub fn get_by_priority(&self, priority: AnnouncementPriority) -> Vec<ScreenReaderAnnouncement> {
-        let announcements = self.announcements.lock().unwrap();
-        announcements
+    pub fn get_by_priority(&self, priority: AnnouncementPriority) -> Result<Vec<ScreenReaderAnnouncement>, String> {
+        let announcements = self.announcements.lock().map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "MUTEX_LOCK_FAILED",
+                &format!("Failed to lock announcements mutex: {}", e),
+                "screen_reader",
+            );
+            eprintln!("[Screen Reader] Error: {}", context.message);
+            context.message
+        })?;
+        Ok(announcements
             .iter()
             .filter(|a| a.priority == priority)
             .cloned()
-            .collect()
+            .collect())
     }
 
     /// Get recent announcements
     #[allow(dead_code)]
-    pub fn get_recent(&self, count: usize) -> Vec<ScreenReaderAnnouncement> {
-        let announcements = self.announcements.lock().unwrap();
+    pub fn get_recent(&self, count: usize) -> Result<Vec<ScreenReaderAnnouncement>, String> {
+        let announcements = self.announcements.lock().map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "MUTEX_LOCK_FAILED",
+                &format!("Failed to lock announcements mutex: {}", e),
+                "screen_reader",
+            );
+            eprintln!("[Screen Reader] Error: {}", context.message);
+            context.message
+        })?;
         let len = announcements.len();
         let start = if len > count { len - count } else { 0 };
-        announcements[start..].to_vec()
+        Ok(announcements[start..].to_vec())
     }
 }
 
@@ -91,29 +184,29 @@ mod tests {
     #[test]
     fn test_announcer_creation() {
         let announcer = ScreenReaderAnnouncer::new();
-        assert_eq!(announcer.get_announcements().len(), 0);
+        assert_eq!(announcer.get_announcements().unwrap().len(), 0);
     }
 
     #[test]
     fn test_announcer_default() {
         let announcer = ScreenReaderAnnouncer::default();
-        assert_eq!(announcer.get_announcements().len(), 0);
+        assert_eq!(announcer.get_announcements().unwrap().len(), 0);
     }
 
     #[test]
     fn test_announce() {
         let announcer = ScreenReaderAnnouncer::new();
-        announcer.announce("Test message".to_string(), AnnouncementPriority::Polite);
-        assert_eq!(announcer.get_announcements().len(), 1);
+        announcer.announce("Test message".to_string(), AnnouncementPriority::Polite).unwrap();
+        assert_eq!(announcer.get_announcements().unwrap().len(), 1);
     }
 
     #[test]
     fn test_announce_multiple() {
         let announcer = ScreenReaderAnnouncer::new();
-        announcer.announce("Message 1".to_string(), AnnouncementPriority::Polite);
-        announcer.announce("Message 2".to_string(), AnnouncementPriority::Assertive);
-        announcer.announce("Message 3".to_string(), AnnouncementPriority::Polite);
-        assert_eq!(announcer.get_announcements().len(), 3);
+        announcer.announce("Message 1".to_string(), AnnouncementPriority::Polite).unwrap();
+        announcer.announce("Message 2".to_string(), AnnouncementPriority::Assertive).unwrap();
+        announcer.announce("Message 3".to_string(), AnnouncementPriority::Polite).unwrap();
+        assert_eq!(announcer.get_announcements().unwrap().len(), 3);
     }
 
     #[test]
@@ -122,8 +215,8 @@ mod tests {
         announcer.announce(
             "Urgent message".to_string(),
             AnnouncementPriority::Assertive,
-        );
-        let announcements = announcer.get_announcements();
+        ).unwrap();
+        let announcements = announcer.get_announcements().unwrap();
         assert_eq!(announcements.len(), 1);
         assert_eq!(announcements[0].priority, AnnouncementPriority::Assertive);
     }
@@ -131,77 +224,77 @@ mod tests {
     #[test]
     fn test_clear() {
         let announcer = ScreenReaderAnnouncer::new();
-        announcer.announce("Message 1".to_string(), AnnouncementPriority::Polite);
-        announcer.announce("Message 2".to_string(), AnnouncementPriority::Assertive);
-        announcer.clear();
-        assert_eq!(announcer.get_announcements().len(), 0);
+        announcer.announce("Message 1".to_string(), AnnouncementPriority::Polite).unwrap();
+        announcer.announce("Message 2".to_string(), AnnouncementPriority::Assertive).unwrap();
+        announcer.clear().unwrap();
+        assert_eq!(announcer.get_announcements().unwrap().len(), 0);
     }
 
     #[test]
     fn test_clear_empty() {
         let announcer = ScreenReaderAnnouncer::new();
-        announcer.clear();
-        assert_eq!(announcer.get_announcements().len(), 0);
+        announcer.clear().unwrap();
+        assert_eq!(announcer.get_announcements().unwrap().len(), 0);
     }
 
     #[test]
     fn test_get_by_priority_polite() {
         let announcer = ScreenReaderAnnouncer::new();
-        announcer.announce("Polite 1".to_string(), AnnouncementPriority::Polite);
-        announcer.announce("Assertive 1".to_string(), AnnouncementPriority::Assertive);
-        announcer.announce("Polite 2".to_string(), AnnouncementPriority::Polite);
+        announcer.announce("Polite 1".to_string(), AnnouncementPriority::Polite).unwrap();
+        announcer.announce("Assertive 1".to_string(), AnnouncementPriority::Assertive).unwrap();
+        announcer.announce("Polite 2".to_string(), AnnouncementPriority::Polite).unwrap();
 
-        let polite = announcer.get_by_priority(AnnouncementPriority::Polite);
+        let polite = announcer.get_by_priority(AnnouncementPriority::Polite).unwrap();
         assert_eq!(polite.len(), 2);
     }
 
     #[test]
     fn test_get_by_priority_assertive() {
         let announcer = ScreenReaderAnnouncer::new();
-        announcer.announce("Polite 1".to_string(), AnnouncementPriority::Polite);
-        announcer.announce("Assertive 1".to_string(), AnnouncementPriority::Assertive);
-        announcer.announce("Polite 2".to_string(), AnnouncementPriority::Polite);
+        announcer.announce("Polite 1".to_string(), AnnouncementPriority::Polite).unwrap();
+        announcer.announce("Assertive 1".to_string(), AnnouncementPriority::Assertive).unwrap();
+        announcer.announce("Polite 2".to_string(), AnnouncementPriority::Polite).unwrap();
 
-        let assertive = announcer.get_by_priority(AnnouncementPriority::Assertive);
+        let assertive = announcer.get_by_priority(AnnouncementPriority::Assertive).unwrap();
         assert_eq!(assertive.len(), 1);
     }
 
     #[test]
     fn test_get_by_priority_none() {
         let announcer = ScreenReaderAnnouncer::new();
-        announcer.announce("Polite 1".to_string(), AnnouncementPriority::Polite);
+        announcer.announce("Polite 1".to_string(), AnnouncementPriority::Polite).unwrap();
 
-        let assertive = announcer.get_by_priority(AnnouncementPriority::Assertive);
+        let assertive = announcer.get_by_priority(AnnouncementPriority::Assertive).unwrap();
         assert_eq!(assertive.len(), 0);
     }
 
     #[test]
     fn test_get_recent() {
         let announcer = ScreenReaderAnnouncer::new();
-        announcer.announce("Message 1".to_string(), AnnouncementPriority::Polite);
-        announcer.announce("Message 2".to_string(), AnnouncementPriority::Polite);
-        announcer.announce("Message 3".to_string(), AnnouncementPriority::Polite);
-        announcer.announce("Message 4".to_string(), AnnouncementPriority::Polite);
-        announcer.announce("Message 5".to_string(), AnnouncementPriority::Polite);
+        announcer.announce("Message 1".to_string(), AnnouncementPriority::Polite).unwrap();
+        announcer.announce("Message 2".to_string(), AnnouncementPriority::Polite).unwrap();
+        announcer.announce("Message 3".to_string(), AnnouncementPriority::Polite).unwrap();
+        announcer.announce("Message 4".to_string(), AnnouncementPriority::Polite).unwrap();
+        announcer.announce("Message 5".to_string(), AnnouncementPriority::Polite).unwrap();
 
-        let recent = announcer.get_recent(3);
+        let recent = announcer.get_recent(3).unwrap();
         assert_eq!(recent.len(), 3);
     }
 
     #[test]
     fn test_get_recent_more_than_available() {
         let announcer = ScreenReaderAnnouncer::new();
-        announcer.announce("Message 1".to_string(), AnnouncementPriority::Polite);
-        announcer.announce("Message 2".to_string(), AnnouncementPriority::Polite);
+        announcer.announce("Message 1".to_string(), AnnouncementPriority::Polite).unwrap();
+        announcer.announce("Message 2".to_string(), AnnouncementPriority::Polite).unwrap();
 
-        let recent = announcer.get_recent(10);
+        let recent = announcer.get_recent(10).unwrap();
         assert_eq!(recent.len(), 2);
     }
 
     #[test]
     fn test_get_recent_empty() {
         let announcer = ScreenReaderAnnouncer::new();
-        let recent = announcer.get_recent(5);
+        let recent = announcer.get_recent(5).unwrap();
         assert_eq!(recent.len(), 0);
     }
 
@@ -330,5 +423,29 @@ mod tests {
         announcer.announce(long_message.clone(), AnnouncementPriority::Polite);
         let announcements = announcer.get_announcements();
         assert_eq!(announcements[0].message.len(), 10000);
+    }
+
+    #[test]
+    fn test_max_announcement_length_exceeded() {
+        let announcer = ScreenReaderAnnouncer::new();
+        let long_message = "a".repeat(MAX_ANNOUNCEMENT_LENGTH + 1);
+        announcer.announce(long_message, AnnouncementPriority::Polite);
+        let announcements = announcer.get_announcements();
+        assert_eq!(announcements.len(), 0);
+    }
+
+    #[test]
+    fn test_max_announcement_length_accepted() {
+        let announcer = ScreenReaderAnnouncer::new();
+        let long_message = "a".repeat(MAX_ANNOUNCEMENT_LENGTH);
+        announcer.announce(long_message, AnnouncementPriority::Polite);
+        let announcements = announcer.get_announcements();
+        assert_eq!(announcements.len(), 1);
+    }
+
+    #[test]
+    fn test_announcer_getters() {
+        assert_eq!(ScreenReaderAnnouncer::max_announcement_length(), MAX_ANNOUNCEMENT_LENGTH);
+        assert_eq!(ScreenReaderAnnouncer::max_announcements(), MAX_ANNOUNCEMENTS);
     }
 }

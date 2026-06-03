@@ -8,7 +8,7 @@
  * 4. 处理编译错误和加载状态
  */
 
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { ref, watch, onMounted, onUnmounted } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { Editor } from '@tiptap/vue-3';
 import { logger, LogCategory } from '../utils/logger';
 import { htmlToTypst } from '../utils/translator';

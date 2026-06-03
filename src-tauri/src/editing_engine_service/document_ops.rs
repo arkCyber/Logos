@@ -1,3 +1,38 @@
+use serde::{Deserialize, Serialize};
+use crate::error_handling::{ErrorContext, ErrorSeverity};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentStats {
+    pub word_count: usize,
+    pub char_count: usize,
+    pub paragraph_count: usize,
+    pub line_count: usize,
+    pub reading_time_minutes: usize,
+    pub sentence_count: usize,
+    pub avg_word_length: f64,
+    pub avg_sentence_length: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentAnalysis {
+    pub stats: DocumentStats,
+    pub is_valid_html: bool,
+    pub validation_errors: Vec<String>,
+    pub has_images: bool,
+    pub has_links: bool,
+    pub has_tables: bool,
+    pub has_code_blocks: bool,
+    pub content_detection: ContentDetection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentDetection {
+    pub images: usize,
+    pub links: usize,
+    pub tables: usize,
+    pub code_blocks: usize,
+}
+
 #[allow(dead_code)]
 pub struct DocumentOperations;
 
@@ -22,9 +57,45 @@ impl DocumentOperations {
         text.split('\n').count()
     }
 
+    pub fn get_sentence_count(text: &str) -> Result<usize, String> {
+        let re = regex::Regex::new(r"[.!?]+")
+            .map_err(|e| {
+                let context = ErrorContext::new(
+                    ErrorSeverity::Error,
+                    "REGEX_COMPILE_FAILED",
+                    &format!("Failed to compile sentence regex: {}", e),
+                    "document_ops",
+                );
+                eprintln!("[Document Operations] Error: {}", context.message);
+                context.message
+            })?;
+        Ok(re.find_iter(text).count())
+    }
+
     pub fn get_reading_time(text: &str, words_per_minute: usize) -> usize {
         let word_count = Self::get_word_count(text);
+        if words_per_minute == 0 {
+            return 1; // Prevent division by zero
+        }
         (word_count / words_per_minute).max(1)
+    }
+
+    pub fn get_avg_word_length(text: &str) -> f64 {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        if words.is_empty() {
+            return 0.0;
+        }
+        let total_chars: usize = words.iter().map(|w| w.chars().count()).sum();
+        total_chars as f64 / words.len() as f64
+    }
+
+    pub fn get_avg_sentence_length(text: &str) -> Result<f64, String> {
+        let word_count = Self::get_word_count(text);
+        let sentence_count = Self::get_sentence_count(text)?;
+        if sentence_count == 0 {
+            return Ok(0.0);
+        }
+        Ok(word_count as f64 / sentence_count as f64)
     }
 
     pub fn extract_text_from_html(html: &str) -> String {
@@ -35,8 +106,15 @@ impl DocumentOperations {
             .replace("</p>", "\n\n")
             .replace("</li>", "\n");
 
-        // Remove all HTML tags
-        let re = regex::Regex::new(r"<[^>]+>").unwrap();
+        // Remove all HTML tags with error handling
+        let re = match regex::Regex::new(r"<[^>]+>") {
+            Ok(regex) => regex,
+            Err(e) => {
+                eprintln!("[Document Operations] Failed to compile HTML tag regex: {}", e);
+                // Fallback: return text without tag removal
+                return text.trim().to_string();
+            }
+        };
         let clean_text = re.replace_all(&text, "").to_string();
 
         // Decode HTML entities
@@ -53,12 +131,28 @@ impl DocumentOperations {
     pub fn validate_html(html: &str) -> Result<(), String> {
         // Basic HTML validation
         if html.is_empty() {
-            return Err("HTML content is empty".to_string());
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "EMPTY_HTML",
+                "HTML content is empty",
+                "document_ops",
+            );
+            return Err(context.message);
         }
 
         // Check for unclosed tags (simplified)
-        let _tag_stack: Vec<&str> = Vec::new();
-        let re = regex::Regex::new(r"<(/?)(\w+)[^>]*>").unwrap();
+        let re = match regex::Regex::new(r"<(/?)(\w+)[^>]*>") {
+            Ok(regex) => regex,
+            Err(e) => {
+                let context = ErrorContext::new(
+                    ErrorSeverity::Error,
+                    "REGEX_COMPILE_FAILED",
+                    &format!("Failed to compile HTML validation regex: {}", e),
+                    "document_ops",
+                );
+                return Err(context.message);
+            }
+        };
 
         for cap in re.captures_iter(html) {
             let is_closing = cap.get(1).map(|m| m.as_str() == "/").unwrap_or(false);
@@ -72,6 +166,58 @@ impl DocumentOperations {
         }
 
         Ok(())
+    }
+
+    pub fn analyze_document(html: &str) -> Result<DocumentAnalysis, String> {
+        let text = Self::extract_text_from_html(html);
+        
+        let stats = DocumentStats {
+            word_count: Self::get_word_count(&text),
+            char_count: Self::get_char_count(&text),
+            paragraph_count: Self::get_paragraph_count(&text),
+            line_count: Self::get_line_count(&text),
+            reading_time_minutes: Self::get_reading_time(&text, 200),
+            sentence_count: Self::get_sentence_count(&text).unwrap_or(0),
+            avg_word_length: Self::get_avg_word_length(&text),
+            avg_sentence_length: Self::get_avg_sentence_length(&text).unwrap_or(0.0),
+        };
+
+        let validation_result = Self::validate_html(html);
+        let is_valid_html = validation_result.is_ok();
+        let validation_errors = if let Err(e) = validation_result {
+            vec![e]
+        } else {
+            vec![]
+        };
+
+        let has_images = html.contains("<img") || html.contains("<image");
+        let has_links = html.contains("<a ") || html.contains("<a>");
+        let has_tables = html.contains("<table") || html.contains("<td");
+        let has_code_blocks = html.contains("<pre") || html.contains("<code");
+
+        // Count actual occurrences
+        let images = html.matches("<img").count() + html.matches("<image").count();
+        let links = html.matches("<a ").count() + html.matches("<a>").count();
+        let tables = html.matches("<table").count() + html.matches("<td").count();
+        let code_blocks = html.matches("<pre").count() + html.matches("<code").count();
+
+        let content_detection = ContentDetection {
+            images,
+            links,
+            tables,
+            code_blocks,
+        };
+
+        Ok(DocumentAnalysis {
+            stats,
+            is_valid_html,
+            validation_errors,
+            has_images,
+            has_links,
+            has_tables,
+            has_code_blocks,
+            content_detection,
+        })
     }
 }
 
@@ -342,8 +488,8 @@ mod tests {
     #[test]
     fn test_get_reading_time_zero_wpm() {
         let text = "hello world";
-        let time = DocumentOperations::get_reading_time(text, 1);
-        assert_eq!(time, 2);
+        let time = DocumentOperations::get_reading_time(text, 0);
+        assert_eq!(time, 1); // Should return 1 when division by zero is prevented
     }
 
     #[test]

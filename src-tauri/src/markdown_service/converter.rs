@@ -182,7 +182,7 @@ impl MarkdownConverter {
         }
 
         let markdown = self.convert_html_to_markdown(html);
-        let conversion_time = start.elapsed().as_millis() as u64;
+        let _conversion_time = start.elapsed().as_millis() as u64;
 
         if markdown.is_empty() && !html.is_empty() {
             // Conversion failed but didn't throw error

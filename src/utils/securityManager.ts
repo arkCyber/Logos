@@ -522,7 +522,11 @@ export class SecurityManager {
       this.rateLimitTracker.set(identifier, []);
     }
 
-    const timestamps = this.rateLimitTracker.get(identifier)!;
+    const timestamps = this.rateLimitTracker.get(identifier);
+    if (!timestamps) {
+      this.rateLimitTracker.set(identifier, []);
+      return true;
+    }
 
     // 清除窗口外的记录
     const validTimestamps = timestamps.filter(t => t > windowStart);
@@ -760,10 +764,12 @@ continue;
       if (filters.userId) {
         events = events.filter(e => e.userId === filters.userId);
       }
-      if (filters.startTime) {
+      if (filters.startTime !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         events = events.filter(e => e.timestamp >= filters.startTime!);
       }
-      if (filters.endTime) {
+      if (filters.endTime !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         events = events.filter(e => e.timestamp <= filters.endTime!);
       }
     }

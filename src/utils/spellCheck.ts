@@ -4,6 +4,7 @@
  */
 
 import Typo from 'typo-js';
+import { logger, LogCategory } from './logger';
 
 export interface SpellCheckError {
   word: string;
@@ -45,7 +46,7 @@ class SpellCheckService {
       this.dictionaryLoaded = true;
       this.initialized = true;
     } catch (error) {
-      console.error('Failed to initialize spell check service:', error);
+      logger.error('Failed to initialize spell check service', error, LogCategory.SYSTEM);
       // Fallback: create a minimal dictionary
       this.dictionary = new Typo('en_US');
       this.dictionaryLoaded = true;

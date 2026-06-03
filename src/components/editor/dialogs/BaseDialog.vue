@@ -19,6 +19,7 @@ interface Emits {
   (e: 'close'): void;
   (e: 'confirm'): void;
   (e: 'cancel'): void;
+  (e: 'apply'): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -65,12 +66,12 @@ const close = () => {
 };
 
 // Confirm dialog
-const confirm = () => {
+const confirm = () => { // eslint-disable-line @typescript-eslint/no-unused-vars
   emit('confirm');
 };
 
 // Cancel dialog
-const cancel = () => {
+const cancel = () => { // eslint-disable-line @typescript-eslint/no-unused-vars
   emit('cancel');
   close();
 };

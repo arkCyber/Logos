@@ -142,7 +142,7 @@ const closePanel = () => {
 
 <template>
   <Transition name="slide">
-    <div v-if="show" class="revision-panel">
+    <div v-if="show" class="revision-panel editor-side-panel editor-side-panel--right">
       <!-- Header -->
       <div class="panel-header">
         <h3 class="panel-title">修订模式</h3>
@@ -351,17 +351,15 @@ const closePanel = () => {
 
 <style scoped>
 .revision-panel {
-  position: fixed;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 400px;
+  width: var(--editor-sidebar-revision-width, 400px);
+  min-width: var(--editor-sidebar-revision-width, 400px);
+  max-width: var(--editor-sidebar-revision-width, 400px);
+  height: 100%;
   background: var(--word-bg-page);
-  border-left: 1px solid var(--word-border);
   display: flex;
   flex-direction: column;
-  z-index: 1000;
-  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 /* Header */
@@ -680,12 +678,12 @@ const closePanel = () => {
 /* Transition */
 .slide-enter-active,
 .slide-leave-active {
-  transition: transform 0.3s ease;
+  transition: opacity 0.2s ease;
 }
 
 .slide-enter-from,
 .slide-leave-to {
-  transform: translateX(100%);
+  opacity: 0;
 }
 
 /* Dark mode */

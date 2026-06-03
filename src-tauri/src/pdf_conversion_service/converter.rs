@@ -5,16 +5,17 @@
 
 use super::error::PdfConversionError;
 use crate::config_service::ExportConfigService;
-use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
+use crate::error_handling::CircuitBreaker;
+use std::io::Write;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::time::Duration;
 
 /// PDF converter with aerospace-grade safety features
 pub struct PdfConverter {
     temp_dir: PathBuf,
     config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl PdfConverter {
@@ -32,9 +33,13 @@ impl PdfConverter {
             })?;
         }
         
+        let config_service = Arc::new(ExportConfigService::new());
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
+        
         Ok(Self {
             temp_dir,
-            config_service: Arc::new(ExportConfigService::new()),
+            config_service,
+            circuit_breaker,
         })
     }
 
@@ -51,9 +56,12 @@ impl PdfConverter {
             })?;
         }
         
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
+        
         Ok(Self {
             temp_dir,
             config_service,
+            circuit_breaker,
         })
     }
 
@@ -84,6 +92,13 @@ impl PdfConverter {
 
     /// Convert PDF to DOCX
     pub fn pdf_to_docx(&self, pdf_data: &[u8]) -> Result<Vec<u8>, PdfConversionError> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err(PdfConversionError::ConversionFailed(
+                "Circuit breaker is open, blocking PDF conversion".to_string()
+            ));
+        }
+
         self.validate_pdf_data(pdf_data)?;
 
         // For now, return a placeholder implementation
@@ -95,11 +110,19 @@ impl PdfConverter {
         // Placeholder: Create a minimal DOCX structure
         let docx_content = self.create_placeholder_docx(pdf_data)?;
         
+        self.circuit_breaker.record_success();
         Ok(docx_content)
     }
 
     /// Convert PDF to PPTX
     pub fn pdf_to_pptx(&self, pdf_data: &[u8]) -> Result<Vec<u8>, PdfConversionError> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err(PdfConversionError::ConversionFailed(
+                "Circuit breaker is open, blocking PDF conversion".to_string()
+            ));
+        }
+
         self.validate_pdf_data(pdf_data)?;
 
         // Placeholder implementation
@@ -109,11 +132,19 @@ impl PdfConverter {
         
         let pptx_content = self.create_placeholder_pptx(pdf_data)?;
         
+        self.circuit_breaker.record_success();
         Ok(pptx_content)
     }
 
     /// Convert PDF to XLSX
     pub fn pdf_to_xlsx(&self, pdf_data: &[u8]) -> Result<Vec<u8>, PdfConversionError> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err(PdfConversionError::ConversionFailed(
+                "Circuit breaker is open, blocking PDF conversion".to_string()
+            ));
+        }
+
         self.validate_pdf_data(pdf_data)?;
 
         // Placeholder implementation
@@ -124,6 +155,7 @@ impl PdfConverter {
         
         let xlsx_content = self.create_placeholder_xlsx(pdf_data)?;
         
+        self.circuit_breaker.record_success();
         Ok(xlsx_content)
     }
 
@@ -212,9 +244,14 @@ impl PdfConverter {
 
 impl Default for PdfConverter {
     fn default() -> Self {
-        Self::new().unwrap_or_else(|_| Self {
-            temp_dir: std::env::temp_dir().join("pdf_conversion"),
-            config_service: Arc::new(ExportConfigService::new()),
+        Self::new().unwrap_or_else(|_| {
+            let config_service = Arc::new(ExportConfigService::new());
+            let circuit_breaker = CircuitBreaker::new(config_service.clone());
+            Self {
+                temp_dir: std::env::temp_dir().join("pdf_conversion"),
+                config_service,
+                circuit_breaker,
+            }
         })
     }
 }

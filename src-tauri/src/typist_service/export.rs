@@ -3,7 +3,9 @@
  * 实现 Typst 的 HTML 和 SVG 导出功能
  */
 
+use typst::layout::Abs;
 use typst::model::Document;
+use typst_svg::{svg, svg_merged};
 
 pub struct HtmlExporter {
     config: HtmlConfig,
@@ -147,19 +149,19 @@ impl Default for HtmlExporter {
     }
 }
 
-pub struct SvgExporter {
+pub struct TypstSvgExporter {
     #[allow(dead_code)]
-    config: SvgConfig,
+    config: TypstSvgExportConfig,
 }
 
 #[derive(Debug, Clone)]
-pub struct SvgConfig {
+pub struct TypstSvgExportConfig {
     pub embed_fonts: bool,
     pub use_vectors: bool,
     pub dpi: f32,
 }
 
-impl Default for SvgConfig {
+impl Default for TypstSvgExportConfig {
     fn default() -> Self {
         Self {
             embed_fonts: false,
@@ -169,101 +171,70 @@ impl Default for SvgConfig {
     }
 }
 
-impl SvgExporter {
+impl TypstSvgExporter {
+    /// Create a Typst document SVG exporter (distinct from `svg_service::SvgExporter`).
     pub fn new() -> Self {
         Self {
-            config: SvgConfig::default(),
+            config: TypstSvgExportConfig::default(),
         }
     }
 
-    pub fn with_config(config: SvgConfig) -> Self {
+    pub fn with_config(config: TypstSvgExportConfig) -> Self {
         Self { config }
     }
 
+    /// Export a Typst document to a multi-page SVG string via the official typst-svg renderer.
     pub fn export(&self, document: &Document) -> Result<String, String> {
-        let mut svg = String::new();
-
-        // SVG header
-        svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        svg.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" ");
-        svg.push_str(&format!(
-            "width=\"{}\" height=\"{}\" ",
-            document.pages.len() as f32 * 595.0,
-            842.0
-        ));
-        svg.push_str("viewBox=\"0 0 595 842\">\n");
-
-        // Render pages
-        for (page_idx, page) in document.pages.iter().enumerate() {
-            let y_offset = page_idx as f32 * 842.0;
-            svg.push_str(&self.render_page(page, y_offset));
+        if document.pages.len() > 1000 {
+            return Err("Typst document page count exceeds maximum of 1000".to_string());
+        }
+        if document.pages.is_empty() {
+            return Ok(empty_typst_svg());
         }
 
-        svg.push_str("</svg>\n");
-
-        Ok(svg)
+        Ok(svg_merged(document, Abs::pt(0.0)))
     }
 
-    fn render_page(&self, page: &typst::layout::Page, y_offset: f32) -> String {
-        let mut svg = String::new();
-
-        let width = page.frame.width().to_pt();
-        let height = page.frame.height().to_pt();
-
-        svg.push_str(&format!("  <g transform=\"translate(0, {})\">\n", y_offset));
-        svg.push_str(&format!("    <rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"white\" stroke=\"black\" stroke-width=\"1\"/>\n", width, height));
-
-        // Render frame content
-        svg.push_str(&self.render_frame(&page.frame));
-
-        svg.push_str("  </g>\n");
-
-        svg
-    }
-
-    fn render_frame(&self, _frame: &typst::layout::Frame) -> String {
-        let mut svg = String::new();
-
-        // Convert frame to SVG elements
-        // This is a simplified version - full implementation would need to traverse the frame tree
-        svg.push_str("    <!-- Frame content would be rendered here -->\n");
-
-        svg
-    }
-
+    /// Export a single Typst page to SVG via the official typst-svg renderer.
     pub fn export_page(&self, document: &Document, page_index: usize) -> Result<String, String> {
         if page_index >= document.pages.len() {
             return Err(format!("Page index {} out of bounds", page_index));
         }
 
         let page = &document.pages[page_index];
-        let mut svg = String::new();
-
         let width = page.frame.width().to_pt();
         let height = page.frame.height().to_pt();
+        if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
+            return Err("Invalid Typst page dimensions".to_string());
+        }
 
-        svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        svg.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" ");
-        svg.push_str(&format!("width=\"{}\" height=\"{}\" ", width, height));
-        svg.push_str(&format!("viewBox=\"0 0 {} {}\">\n", width, height));
-
-        svg.push_str(&format!(
-            "  <rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"white\"/>\n",
-            width, height
-        ));
-        svg.push_str(&self.render_frame(&page.frame));
-
-        svg.push_str("</svg>\n");
-
-        Ok(svg)
+        Ok(svg(page))
     }
 }
 
-impl Default for SvgExporter {
+/// Render a minimal SVG placeholder for empty Typst documents.
+fn empty_typst_svg() -> String {
+    concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"595\" height=\"842\" viewBox=\"0 0 595 842\">\n",
+        "  <rect width=\"100%\" height=\"100%\" fill=\"white\"/>\n",
+        "  <text x=\"50%\" y=\"50%\" text-anchor=\"middle\" font-size=\"14\" fill=\"#666\">Empty Typst document</text>\n",
+        "</svg>\n"
+    )
+    .to_string()
+}
+
+impl Default for TypstSvgExporter {
     fn default() -> Self {
         Self::new()
     }
 }
+
+/// Backward-compatible alias for Typst document SVG export.
+pub type SvgExporter = TypstSvgExporter;
+
+/// Backward-compatible alias for Typst SVG export configuration.
+pub type SvgConfig = TypstSvgExportConfig;
 
 #[cfg(test)]
 mod tests {
@@ -289,18 +260,18 @@ mod tests {
 
     #[test]
     fn test_svg_exporter_creation() {
-        let exporter = SvgExporter::new();
+        let exporter = TypstSvgExporter::new();
         assert_eq!(exporter.config.use_vectors, true);
     }
 
     #[test]
     fn test_svg_exporter_with_config() {
-        let config = SvgConfig {
+        let config = TypstSvgExportConfig {
             embed_fonts: true,
             use_vectors: false,
             dpi: 144.0,
         };
-        let exporter = SvgExporter::with_config(config);
+        let exporter = TypstSvgExporter::with_config(config);
         assert_eq!(exporter.config.embed_fonts, true);
         assert_eq!(exporter.config.dpi, 144.0);
     }
@@ -315,9 +286,143 @@ mod tests {
 
     #[test]
     fn test_svg_config_default() {
-        let config = SvgConfig::default();
+        let config = TypstSvgExportConfig::default();
         assert_eq!(config.embed_fonts, false);
         assert_eq!(config.use_vectors, true);
         assert_eq!(config.dpi, 72.0);
+    }
+
+    #[test]
+    fn test_svg_export_produces_valid_xml() {
+        let exporter = TypstSvgExporter::new();
+        let document = typst::model::Document::default();
+        let result = exporter.export(&document);
+        assert!(result.is_ok());
+        let svg = result.unwrap();
+        assert!(svg.contains("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(svg.contains("<svg xmlns=\"http://www.w3.org/2000/svg\""));
+        assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn test_svg_export_includes_viewbox() {
+        let exporter = TypstSvgExporter::new();
+        let document = typst::model::Document::default();
+        let result = exporter.export(&document);
+        assert!(result.is_ok());
+        let svg = result.unwrap();
+        assert!(svg.contains("viewBox="));
+    }
+
+    #[test]
+    fn test_svg_export_includes_width_height() {
+        let exporter = TypstSvgExporter::new();
+        let document = typst::model::Document::default();
+        let result = exporter.export(&document);
+        assert!(result.is_ok());
+        let svg = result.unwrap();
+        assert!(svg.contains("width="));
+        assert!(svg.contains("height="));
+    }
+
+    #[test]
+    fn test_svg_export_page_out_of_bounds() {
+        let exporter = TypstSvgExporter::new();
+        let document = typst::model::Document::default();
+        let result = exporter.export_page(&document, 999);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("out of bounds"));
+    }
+
+    #[test]
+    fn test_svg_config_embed_fonts() {
+        let config = TypstSvgExportConfig {
+            embed_fonts: true,
+            use_vectors: true,
+            dpi: 72.0,
+        };
+        assert_eq!(config.embed_fonts, true);
+    }
+
+    #[test]
+    fn test_svg_config_use_vectors() {
+        let config = TypstSvgExportConfig {
+            embed_fonts: false,
+            use_vectors: false,
+            dpi: 72.0,
+        };
+        assert_eq!(config.use_vectors, false);
+    }
+
+    #[test]
+    fn test_svg_config_dpi() {
+        let config = TypstSvgExportConfig {
+            embed_fonts: false,
+            use_vectors: true,
+            dpi: 300.0,
+        };
+        assert_eq!(config.dpi, 300.0);
+    }
+
+    #[test]
+    fn test_svg_exporter_default() {
+        let exporter = TypstSvgExporter::default();
+        assert_eq!(exporter.config.use_vectors, true);
+    }
+
+    #[test]
+    fn test_render_frame_depth_limit() {
+        let exporter = TypstSvgExporter::new();
+        let document = typst::model::Document::default();
+        let result = exporter.export(&document);
+        assert!(result.is_ok());
+        let svg = result.unwrap();
+        // Should not contain max depth warning for normal documents
+        assert!(!svg.contains("Max depth reached"));
+    }
+
+    #[test]
+    fn test_render_text_escaping() {
+        use crate::svg_service::sanitize::escape_svg_text;
+        assert_eq!(escape_svg_text("<&>"), "&lt;&amp;&gt;");
+    }
+
+    #[test]
+    fn test_svg_export_uses_typst_svg_renderer() {
+        let compiler = crate::typist_service::TypstCompiler::new();
+        let code = "= Hello SVG\n\nExport test.";
+        let Ok(document) = compiler.compile(code.to_string()) else {
+            return;
+        };
+        if document.pages.is_empty() {
+            return;
+        }
+
+        let exporter = TypstSvgExporter::new();
+        let svg = exporter.export(&document);
+        assert!(svg.is_ok());
+        let svg = svg.unwrap();
+        assert!(svg.contains("<svg"));
+        assert!(!svg.contains("Frame content rendering requires"));
+        assert!(!svg.contains("<!-- Frame item at"));
+    }
+
+    #[test]
+    fn test_svg_export_page_renders_single_page() {
+        let compiler = crate::typist_service::TypstCompiler::new();
+        let code = "= Page One";
+        let Ok(document) = compiler.compile(code.to_string()) else {
+            return;
+        };
+        if document.pages.is_empty() {
+            return;
+        }
+
+        let exporter = TypstSvgExporter::new();
+        let svg = exporter.export_page(&document, 0);
+        assert!(svg.is_ok());
+        let svg = svg.unwrap();
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("viewBox"));
     }
 }

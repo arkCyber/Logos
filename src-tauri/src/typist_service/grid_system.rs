@@ -4,7 +4,6 @@
  */
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// 网格类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

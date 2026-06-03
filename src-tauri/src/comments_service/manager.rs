@@ -11,7 +11,7 @@
 use super::storage::{Comment, CommentStatus, CommentStorage, CommentThread};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::error_handling::{ErrorContext, ErrorSeverity};
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker};
 use crate::config_service::ExportConfigService;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,15 +42,18 @@ pub struct CommentsManager {
     operation_count: u64,
     last_error: Option<ErrorContext>,
     config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl CommentsManager {
     pub fn new(config_service: Arc<ExportConfigService>) -> Self {
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             storage: CommentStorage::new(),
             operation_count: 0,
             last_error: None,
             config_service,
+            circuit_breaker,
         }
     }
 
@@ -130,35 +133,48 @@ impl CommentsManager {
     ) -> Result<String, String> {
         self.operation_count += 1;
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let error = "Circuit breaker is open, blocking comment operations".to_string();
+            self.record_error("CIRCUIT_BREAKER_OPEN", &error, "create_comment");
+            return Err(error);
+        }
+
         // Validate title
         if let Err(e) = self.validate_title(&title) {
             self.record_error("INVALID_TITLE", &e, "create_comment");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate comment content
         if let Err(e) = self.validate_comment_content(&comment.content) {
             self.record_error("INVALID_CONTENT", &e, "create_comment");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate mentions
         if let Err(e) = self.validate_mentions(&comment.mentions) {
             self.record_error("INVALID_MENTIONS", &e, "create_comment");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate attachments
         if let Err(e) = self.validate_attachments(&comment.attachments) {
             self.record_error("INVALID_ATTACHMENTS", &e, "create_comment");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         let result = self.storage.create_thread(document_id, title, comment);
         if result.is_err() {
             self.record_error("STORAGE_ERROR", "Failed to create thread", "create_comment");
+            self.circuit_breaker.record_failure();
         } else {
             self.last_error = None;
+            self.circuit_breaker.record_success();
         }
         result
     }
@@ -167,21 +183,31 @@ impl CommentsManager {
     pub fn reply_to_comment(&mut self, thread_id: String, comment: Comment) -> Result<(), String> {
         self.operation_count += 1;
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let error = "Circuit breaker is open, blocking comment operations".to_string();
+            self.record_error("CIRCUIT_BREAKER_OPEN", &error, "reply_to_comment");
+            return Err(error);
+        }
+
         // Validate comment content
         if let Err(e) = self.validate_comment_content(&comment.content) {
             self.record_error("INVALID_CONTENT", &e, "reply_to_comment");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate mentions
         if let Err(e) = self.validate_mentions(&comment.mentions) {
             self.record_error("INVALID_MENTIONS", &e, "reply_to_comment");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate attachments
         if let Err(e) = self.validate_attachments(&comment.attachments) {
             self.record_error("INVALID_ATTACHMENTS", &e, "reply_to_comment");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
@@ -190,8 +216,10 @@ impl CommentsManager {
         let result = self.storage.add_comment(thread_id, reply);
         if result.is_err() {
             self.record_error("STORAGE_ERROR", "Failed to add comment", "reply_to_comment");
+            self.circuit_breaker.record_failure();
         } else {
             self.last_error = None;
+            self.circuit_breaker.record_success();
         }
         result
     }

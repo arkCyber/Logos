@@ -17,4 +17,3 @@ pub mod converter;
 pub mod error;
 
 pub use converter::PdfConverter;
-pub use error::PdfConversionError;

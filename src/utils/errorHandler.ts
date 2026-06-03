@@ -339,15 +339,13 @@ export function getErrorStatistics(): {
  */
 export function handleError(error: unknown, context: string): string {
   let message = ERROR_MESSAGES[ErrorCode.UNKNOWN_ERROR];
-  let code: ErrorCode | string = ErrorCode.UNKNOWN_ERROR;
   let severity: ErrorSeverity = ErrorSeverity.ERROR;
-  let category: ErrorCategory = ErrorCategory.SYSTEM;
 
   if (error instanceof AppError) {
     message = error.message;
-    code = error.code;
+    const _code = error.code;
     severity = error.severity;
-    category = error.category;
+    const _category = error.category;
 
     // 记录错误
     recordError(error);
@@ -424,7 +422,7 @@ function triggerCriticalAlert(error: AppError): void {
 
   // 在浏览器环境中，可以显示特殊的错误界面
   if (typeof window !== 'undefined') {
-    console.error('CRITICAL ERROR DETECTED:', error);
+    logger.error('CRITICAL ERROR DETECTED', error, LogCategory.SYSTEM);
   }
 }
 
@@ -445,13 +443,13 @@ export async function withErrorHandling<T>(
   }
 ): Promise<T | undefined> {
   const { maxRetries = 0, onRetry } = options || {};
-  let lastError: any;
+  let __lastError: any;
 
   for (let attempt = 1; attempt <= (maxRetries + 1); attempt++) {
     try {
       return await fn();
     } catch (error) {
-      lastError = error;
+      __lastError = error;
 
       if (attempt <= maxRetries) {
         if (onRetry) {
@@ -570,13 +568,13 @@ export async function retry<T>(
 ): Promise<T> {
   const { maxAttempts = 3, delay = 1000, backoff = true, onRetry, shouldRetry } = options;
 
-  let lastError: any;
+  let __lastError: any;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (error) {
-      lastError = error;
+      __lastError = error;
 
       // 检查是否应该重试
       if (shouldRetry && !shouldRetry(error)) {
@@ -596,7 +594,7 @@ export async function retry<T>(
     }
   }
 
-  throw lastError;
+  throw _lastError;
 }
 
 /**

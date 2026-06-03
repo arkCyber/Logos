@@ -272,7 +272,7 @@ pub struct Alignment {
 impl Default for Alignment {
     fn default() -> Self {
         Self {
-            horizontal: Some(HorizontalAlignment::General),
+            horizontal: Some(HorizontalAlignment::GENERAL),
             vertical: Some(VerticalAlignment::Bottom),
             wrap_text: Some(false),
             shrink_to_fit: Some(false),
@@ -469,7 +469,7 @@ impl Default for StyleManager {
 
 // Add HorizontalAlignment::General for default
 impl HorizontalAlignment {
-    pub const General: HorizontalAlignment = HorizontalAlignment::Left;
+    pub const GENERAL: HorizontalAlignment = HorizontalAlignment::Left;
 }
 
 #[cfg(test)]

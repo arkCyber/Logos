@@ -153,6 +153,16 @@ describe('FileBackstage Component Logic', () => {
       expect(eventName).toBe('export-typst');
     });
 
+    it('should have export-svg-typst event', () => {
+      const eventName = 'export-svg-typst';
+      expect(eventName).toBe('export-svg-typst');
+    });
+
+    it('should have export-svg-html event', () => {
+      const eventName = 'export-svg-html';
+      expect(eventName).toBe('export-svg-html');
+    });
+
     it('should have print event', () => {
       const eventName = 'print';
       expect(eventName).toBe('print');

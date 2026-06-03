@@ -136,7 +136,7 @@ const showCreateDialog = ref(false);
 const showImportDialog = ref(false);
 const showDetailsDialog = ref(false);
 const showApplyDialog = ref(false);
-const showEditMetadataDialog = ref(false);
+const showEditMetadataDialog = ref(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 const showRatingDialog = ref(false);
 const showCommentDialog = ref(false);
 const showShareDialog = ref(false);
@@ -147,7 +147,7 @@ const variableValues = ref<Record<string, string>>({});
 const userRating = ref(0);
 const userComment = ref('');
 
-const newTemplate = ref({
+const newTemplate = ref({ // eslint-disable-line @typescript-eslint/no-unused-vars
   name: '',
   description: '',
   category: 'Custom',

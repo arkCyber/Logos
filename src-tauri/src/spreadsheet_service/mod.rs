@@ -37,15 +37,13 @@ pub mod types;
 mod tests;
 
 pub use cell::{CellManager};
-pub use formula::{FormulaEngine, FormulaResult};
-pub use style::{CellStyle, StyleManager, FontStyle, HorizontalAlignment, VerticalAlignment};
-pub use validation::{DataValidation, ValidationRule, ValidationType, ValidationManager};
-pub use excel_io::{ExcelImporter, ExcelExporter, ExcelImportOptions, ExcelExportOptions};
-pub use pivot::{PivotTable, PivotConfig, PivotGenerator, PivotAggregation, PivotValue};
-pub use charts::{Chart, ChartType, ChartGenerator, ChartConfig};
-pub use conditional_formatting::{ConditionalFormat, ConditionalFormatRule, ConditionalFormatManager};
-pub use error::{SpreadsheetError, SpreadsheetResult, FormulaErrorType};
-pub use types::{Sheet, Workbook, Range, CellReference, Cell, CellValue};
+pub use formula::FormulaEngine;
+pub use style::{CellStyle, StyleManager};
+pub use validation::{DataValidation, ValidationRule, ValidationManager};
+pub use pivot::{PivotConfig, PivotGenerator};
+pub use charts::{ChartGenerator, ChartConfig};
+pub use conditional_formatting::ConditionalFormatManager;
+pub use types::CellValue;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;

@@ -138,6 +138,9 @@ max_output_size = 104857600
 # Maximum HTML content length in bytes (default: 50MB)
 max_html_length = 52428800
 
+# Maximum text content length in bytes per text element (default: 1MB)
+max_text_length = 1048576
+
 # Maximum element count (default: 10000)
 max_element_count = 10000
 

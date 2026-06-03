@@ -1,8 +1,8 @@
-# LOGOS PPT Editor User Guide
+# Logos智道办公软件 PPT Editor User Guide
 
 ## Overview
 
-LOGOS PPT Editor is a powerful, aerospace-grade presentation editor built with Vue 3 and integrated with Slidev for real-time preview. It provides a WYSIWYG editing experience with support for multiple export formats.
+Logos智道办公软件 PPT Editor is a powerful, aerospace-grade presentation editor built with Vue 3 and integrated with Slidev for real-time preview. It provides a WYSIWYG editing experience with support for multiple export formats.
 
 ## Features
 

@@ -8,12 +8,12 @@
  * 4. 支持表格、列表、标题等特殊状态的检测
  */
 
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { Editor } from '@tiptap/vue-3';
-import { Table } from '@tiptap/extension-table';
-import { TableRow } from '@tiptap/extension-table-row';
-import { TableCell } from '@tiptap/extension-table-cell';
-import { TableHeader } from '@tiptap/extension-table-header';
+import { Table } from '@tiptap/extension-table'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { TableRow } from '@tiptap/extension-table-row'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { TableCell } from '@tiptap/extension-table-cell'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { TableHeader } from '@tiptap/extension-table-header'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { logger, LogCategory } from '../utils/logger';
 
 // 编辑器状态类型

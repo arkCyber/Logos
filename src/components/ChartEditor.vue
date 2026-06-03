@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import DOMPurify from 'dompurify';
 
 interface ChartDataPoint {
   label: string;
@@ -78,8 +79,12 @@ const generateChart = async () => {
       }
     });
 
-    chartSvg.value = svg;
-    emit('update:modelValue', svg);
+    // Sanitize SVG to prevent XSS attacks
+    const sanitizedSvg = DOMPurify.sanitize(svg, {
+      USE_PROFILES: { svg: true, svgFilters: true }
+    });
+    chartSvg.value = sanitizedSvg;
+    emit('update:modelValue', sanitizedSvg);
   } catch (error) {
     isError.value = true;
     errorMessage.value = error instanceof Error ? error.message : 'Failed to generate chart';

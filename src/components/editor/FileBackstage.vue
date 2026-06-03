@@ -2,9 +2,11 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { save, open } from '@tauri-apps/plugin-dialog';
 import { logger, LogCategory } from '../../utils/logger';
-import { 
-  Clock, FilePlus, Info, Search, 
-  FileText, Download, Printer, X
+import {
+  Clock, FilePlus, Info, Search,
+  FileText, Download, Printer, X,
+  Settings, HelpCircle, User, Palette,
+  Keyboard, BookOpen, Globe, Github
 } from 'lucide-vue-next';
 
 interface Props {
@@ -24,13 +26,15 @@ interface Emits {
   (e: 'export-pdf'): void;
   (e: 'export-word'): void;
   (e: 'export-typst'): void;
+  (e: 'export-svg-typst'): void;
+  (e: 'export-svg-html'): void;
   (e: 'print'): void;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
-const activeTab = ref<'recent' | 'new' | 'info'>('recent');
+const activeTab = ref<'recent' | 'new' | 'info' | 'settings' | 'help' | 'account'>('recent');
 const searchQuery = ref('');
 
 const filteredRecentFiles = computed(() => {
@@ -157,9 +161,73 @@ const handleExportTypst = () => {
   emit('close');
 };
 
+const handleExportSvgTypst = () => {
+  emit('export-svg-typst');
+  emit('close');
+};
+
+const handleExportSvgHtml = () => {
+  emit('export-svg-html');
+  emit('close');
+};
+
 const handlePrint = () => {
   emit('print');
   emit('close');
+};
+
+// Settings handlers
+const themeOptions = ref(['light', 'dark', 'auto']);
+const selectedTheme = ref('auto');
+const fontSizeOptions = ref(['12px', '14px', '16px', '18px']);
+const selectedFontSize = ref('14px');
+
+const handleThemeChange = (theme: string) => {
+  selectedTheme.value = theme;
+  // Apply theme logic here
+  if (theme === 'dark') {
+    document.documentElement.classList.add('dark');
+  } else if (theme === 'light') {
+    document.documentElement.classList.remove('dark');
+  } else {
+    // Auto - follow system preference
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }
+};
+
+const handleFontSizeChange = (size: string) => {
+  selectedFontSize.value = size;
+  document.documentElement.style.fontSize = size;
+};
+
+// Help handlers
+const shortcuts = [
+  { key: 'Ctrl+S', action: '保存文档' },
+  { key: 'Ctrl+O', action: '打开文件' },
+  { key: 'Ctrl+N', action: '新建文档' },
+  { key: 'Ctrl+P', action: '打印文档' },
+  { key: 'Ctrl+Z', action: '撤销' },
+  { key: 'Ctrl+Y', action: '重做' },
+  { key: 'Ctrl+F', action: '查找' },
+  { key: 'Ctrl+H', action: '替换' },
+  { key: 'F1', action: '打开帮助' },
+  { key: 'Escape', action: '关闭对话框' }
+];
+
+const handleOpenDocumentation = () => {
+  window.open('https://github.com/your-org/logos-zhidao-office/blob/main/docs/USER_GUIDE.md', '_blank');
+};
+
+const handleOpenGitHub = () => {
+  window.open('https://github.com/your-org/logos-zhidao-office', '_blank');
+};
+
+const handleReportIssue = () => {
+  window.open('https://github.com/your-org/logos-zhidao-office/issues', '_blank');
 };
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -211,6 +279,36 @@ onBeforeUnmount(() => {
           >
             <Info :size="20" />
             <span>信息</span>
+          </button>
+
+          <button
+            class="sidebar-item"
+            :class="{ active: activeTab === 'settings' }"
+            aria-label="设置"
+            @click="activeTab = 'settings'"
+          >
+            <Settings :size="20" />
+            <span>设置</span>
+          </button>
+
+          <button
+            class="sidebar-item"
+            :class="{ active: activeTab === 'help' }"
+            aria-label="帮助"
+            @click="activeTab = 'help'"
+          >
+            <HelpCircle :size="20" />
+            <span>帮助</span>
+          </button>
+
+          <button
+            class="sidebar-item"
+            :class="{ active: activeTab === 'account' }"
+            aria-label="账户"
+            @click="activeTab = 'account'"
+          >
+            <User :size="20" />
+            <span>账户</span>
           </button>
         </div>
 
@@ -365,11 +463,190 @@ onBeforeUnmount(() => {
                     <FileText :size="16" />
                     导出 Word
                   </button>
-                  <button class="action-button" aria-label="导出Typst" @click="handleExportTypst">
+                  <button class="action-button" aria-label="Export Typst" @click="handleExportTypst">
                     <FileText :size="16" />
-                    导出 Typst
+                    Export Typst
+                  </button>
+                  <button class="action-button" aria-label="Export SVG (Typst)" @click="handleExportSvgTypst">
+                    <FileText :size="16" />
+                    Export SVG (Typst)
+                  </button>
+                  <button class="action-button" aria-label="Export SVG (HTML)" @click="handleExportSvgHtml">
+                    <FileText :size="16" />
+                    Export SVG (HTML)
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings Tab -->
+          <div v-if="activeTab === 'settings'" class="tab-content">
+            <div class="tab-header">
+              <h2>设置</h2>
+            </div>
+
+            <div class="settings-content">
+              <div class="settings-section">
+                <h3>
+                  <Palette :size="18" />
+                  外观
+                </h3>
+                <div class="setting-item">
+                  <label class="setting-label">主题</label>
+                  <div class="setting-options">
+                    <button
+                      v-for="theme in themeOptions"
+                      :key="theme"
+                      class="theme-option"
+                      :class="{ active: selectedTheme === theme }"
+                      @click="handleThemeChange(theme)"
+                    >
+                      {{ theme === 'light' ? '浅色' : theme === 'dark' ? '深色' : '自动' }}
+                    </button>
+                  </div>
+                </div>
+                <div class="setting-item">
+                  <label class="setting-label">字体大小</label>
+                  <div class="setting-options">
+                    <button
+                      v-for="size in fontSizeOptions"
+                      :key="size"
+                      class="font-option"
+                      :class="{ active: selectedFontSize === size }"
+                      @click="handleFontSizeChange(size)"
+                    >
+                      {{ size }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <h3>
+                  <Settings :size="18" />
+                  编辑器
+                </h3>
+                <div class="setting-item">
+                  <label class="setting-label">自动保存</label>
+                  <div class="setting-toggle">
+                    <input id="auto-save" type="checkbox" checked />
+                    <label for="auto-save">启用</label>
+                  </div>
+                </div>
+                <div class="setting-item">
+                  <label class="setting-label">拼写检查</label>
+                  <div class="setting-toggle">
+                    <input id="spell-check" type="checkbox" checked />
+                    <label for="spell-check">启用</label>
+                  </div>
+                </div>
+                <div class="setting-item">
+                  <label class="setting-label">显示格式标记</label>
+                  <div class="setting-toggle">
+                    <input id="format-marks" type="checkbox" />
+                    <label for="format-marks">启用</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Help Tab -->
+          <div v-if="activeTab === 'help'" class="tab-content">
+            <div class="tab-header">
+              <h2>帮助</h2>
+            </div>
+
+            <div class="help-content">
+              <div class="help-section">
+                <h3>
+                  <Keyboard :size="18" />
+                  快捷键
+                </h3>
+                <div class="shortcuts-list">
+                  <div v-for="shortcut in shortcuts" :key="shortcut.key" class="shortcut-item">
+                    <kbd class="shortcut-key">{{ shortcut.key }}</kbd>
+                    <span class="shortcut-action">{{ shortcut.action }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="help-section">
+                <h3>
+                  <BookOpen :size="18" />
+                  文档
+                </h3>
+                <div class="help-links">
+                  <button class="help-link" @click="handleOpenDocumentation">
+                    <BookOpen :size="16" />
+                    <span>用户指南</span>
+                    <Globe :size="14" />
+                  </button>
+                  <button class="help-link" @click="handleOpenDocumentation">
+                    <BookOpen :size="16" />
+                    <span>开发者指南</span>
+                    <Globe :size="14" />
+                  </button>
+                </div>
+              </div>
+
+              <div class="help-section">
+                <h3>
+                  <Github :size="18" />
+                  社区
+                </h3>
+                <div class="help-links">
+                  <button class="help-link" @click="handleOpenGitHub">
+                    <Github :size="16" />
+                    <span>GitHub 仓库</span>
+                    <Globe :size="14" />
+                  </button>
+                  <button class="help-link" @click="handleReportIssue">
+                    <Github :size="16" />
+                    <span>报告问题</span>
+                    <Globe :size="14" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account Tab -->
+          <div v-if="activeTab === 'account'" class="tab-content">
+            <div class="tab-header">
+              <h2>账户</h2>
+            </div>
+
+            <div class="account-content">
+              <div class="account-info">
+                <div class="account-avatar">
+                  <User :size="48" />
+                </div>
+                <div class="account-details">
+                  <h3>未登录</h3>
+                  <p>登录以同步您的文档和设置</p>
+                </div>
+              </div>
+
+              <div class="account-actions">
+                <button class="btn-primary">
+                  登录
+                </button>
+                <button class="btn-secondary">
+                  注册账户
+                </button>
+              </div>
+
+              <div class="account-features">
+                <h4>账户功能</h4>
+                <ul>
+                  <li>云端同步文档</li>
+                  <li>跨设备访问</li>
+                  <li>版本历史</li>
+                  <li>协作编辑</li>
+                  <li>更多存储空间</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -750,6 +1027,262 @@ onBeforeUnmount(() => {
 .close-button:hover {
   background-color: var(--word-error-bg, #fee);
   color: var(--word-error, #dc3545);
+}
+
+/* Settings Styles */
+.settings-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.settings-section {
+  margin-bottom: 32px;
+}
+
+.settings-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--word-text-primary, #333);
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--word-border-light, #f0f0f0);
+}
+
+.setting-label {
+  font-weight: 500;
+  color: var(--word-text-primary, #333);
+}
+
+.setting-options {
+  display: flex;
+  gap: 8px;
+}
+
+.theme-option,
+.font-option {
+  padding: 6px 16px;
+  border: 1px solid var(--word-border, #e0e0e0);
+  border-radius: 4px;
+  background: var(--word-bg, #ffffff);
+  color: var(--word-text-primary, #333);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.theme-option:hover,
+.font-option:hover {
+  border-color: var(--word-accent, #007bff);
+}
+
+.theme-option.active,
+.font-option.active {
+  background-color: var(--word-accent, #007bff);
+  color: white;
+  border-color: var(--word-accent, #007bff);
+}
+
+.setting-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.setting-toggle label {
+  font-size: 13px;
+  color: var(--word-text-primary, #333);
+  cursor: pointer;
+}
+
+/* Help Styles */
+.help-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.help-section {
+  margin-bottom: 32px;
+}
+
+.help-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--word-text-primary, #333);
+}
+
+.shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.shortcut-key {
+  background-color: var(--word-button-bg, #f5f5f5);
+  border: 1px solid var(--word-border, #e0e0e0);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: var(--word-font-ui, 'Segoe UI', system-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--word-text-primary, #333);
+  min-width: 100px;
+  text-align: center;
+}
+
+.shortcut-action {
+  font-size: 14px;
+  color: var(--word-text-secondary, #666);
+}
+
+.help-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.help-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--word-border, #e0e0e0);
+  border-radius: 6px;
+  background: var(--word-bg, #ffffff);
+  color: var(--word-text-primary, #333);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.help-link:hover {
+  background-color: var(--word-button-hover, #f5f5f5);
+  border-color: var(--word-accent, #007bff);
+}
+
+.help-link span {
+  flex: 1;
+}
+
+/* Account Styles */
+.account-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.account-info {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  border: 1px solid var(--word-border, #e0e0e0);
+  border-radius: 8px;
+  background: var(--word-bg, #ffffff);
+}
+
+.account-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--word-button-bg, #f5f5f5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--word-text-secondary, #666);
+}
+
+.account-details h3 {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--word-text-primary, #333);
+}
+
+.account-details p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--word-text-secondary, #666);
+}
+
+.account-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-secondary {
+  padding: 10px 24px;
+  background-color: var(--word-bg, #ffffff);
+  color: var(--word-text-primary, #333);
+  border: 1px solid var(--word-border, #e0e0e0);
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background-color: var(--word-button-hover, #f5f5f5);
+  border-color: var(--word-accent, #007bff);
+}
+
+.account-features {
+  padding: 20px;
+  border: 1px solid var(--word-border, #e0e0e0);
+  border-radius: 8px;
+  background: var(--word-button-bg, #f5f5f5);
+}
+
+.account-features h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--word-text-primary, #333);
+}
+
+.account-features ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.account-features li {
+  font-size: 13px;
+  color: var(--word-text-secondary, #666);
+  margin: 4px 0;
 }
 
 /* Transition animations */

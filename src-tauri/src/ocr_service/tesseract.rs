@@ -2,6 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[cfg(feature = "tesseract-rs")]
+use crate::error_handling::{ErrorContext, ErrorSeverity};
+use crate::error_handling::CircuitBreaker;
+use crate::config_service::ExportConfigService;
+use std::sync::Arc;
+
+#[cfg(feature = "tesseract-rs")]
 use tesseract_rs::TessPageSegMode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,60 +66,113 @@ pub struct BoundingBox {
 pub struct TesseractEngine {
     config: OcrConfig,
     tesseract: tesseract_rs::Tesseract,
+    config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
 }
 
 #[cfg(not(feature = "tesseract-rs"))]
 pub struct TesseractEngine {
     config: OcrConfig,
+    config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl TesseractEngine {
-    pub fn new(config: OcrConfig) -> Self {
+    pub fn new(config: OcrConfig) -> Result<Self, String> {
+        let config_service = Arc::new(ExportConfigService::new());
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
+        
         #[cfg(feature = "tesseract-rs")]
         {
             let tesseract = tesseract_rs::Tesseract::new(None, &config.language)
-                .expect("Failed to initialize Tesseract");
+                .map_err(|e| {
+                    let context = ErrorContext::new(
+                        ErrorSeverity::Error,
+                        "TESSERACT_INIT_FAILED",
+                        &format!("Failed to initialize Tesseract: {}", e),
+                        "tesseract_engine",
+                    );
+                    eprintln!("[Tesseract Engine] Error: {}", context.message);
+                    context.message
+                })?;
             tesseract
                 .set_page_seg_mode(TessPageSegMode::PSM_AUTO)
-                .expect("Failed to set page segmentation mode");
+                .map_err(|e| {
+                    let context = ErrorContext::new(
+                        ErrorSeverity::Error,
+                        "TESSERACT_SET_MODE_FAILED",
+                        &format!("Failed to set page segmentation mode: {}", e),
+                        "tesseract_engine",
+                    );
+                    eprintln!("[Tesseract Engine] Error: {}", context.message);
+                    context.message
+                })?;
             if config.preserve_interword_spaces {
                 tesseract
                     .set_variable("preserve_interword_spaces", "1")
-                    .expect("Failed to set variable");
+                    .map_err(|e| {
+                        let context = ErrorContext::new(
+                            ErrorSeverity::Error,
+                            "TESSERACT_SET_VAR_FAILED",
+                            &format!("Failed to set variable: {}", e),
+                            "tesseract_engine",
+                        );
+                        eprintln!("[Tesseract Engine] Error: {}", context.message);
+                        context.message
+                    })?;
             }
-            Self { config, tesseract }
+            Ok(Self { config, tesseract, config_service, circuit_breaker })
         }
         #[cfg(not(feature = "tesseract-rs"))]
         {
-            Self { config }
+            Ok(Self { config, config_service, circuit_breaker })
         }
     }
 
     /// Perform OCR on an image file
     pub fn recognize_file(&self, image_path: &str) -> Result<OcrResult, String> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err("Circuit breaker is open, blocking OCR operations".to_string());
+        }
+
         if !Path::new(image_path).exists() {
+            self.circuit_breaker.record_failure();
             return Err(format!("Image file not found: {}", image_path));
         }
 
         #[cfg(feature = "tesseract-rs")]
         {
             let mut tesseract = tesseract_rs::Tesseract::new(None, &self.config.language)
-                .map_err(|e| format!("Failed to initialize Tesseract: {}", e))?;
+                .map_err(|e| {
+                    self.circuit_breaker.record_failure();
+                    format!("Failed to initialize Tesseract: {}", e)
+                })?;
             
             tesseract.set_page_seg_mode(tesseract_rs::TessPageSegMode::PSM_AUTO)
-                .map_err(|e| format!("Failed to set page segmentation mode: {}", e))?;
+                .map_err(|e| {
+                    self.circuit_breaker.record_failure();
+                    format!("Failed to set page segmentation mode: {}", e)
+                })?;
             
             if self.config.preserve_interword_spaces {
                 tesseract.set_variable("preserve_interword_spaces", "1")
-                    .map_err(|e| format!("Failed to set variable: {}", e))?;
+                    .map_err(|e| {
+                        self.circuit_breaker.record_failure();
+                        format!("Failed to set variable: {}", e)
+                    })?;
             }
 
             let text = tesseract.recognize_file(image_path)
-                .map_err(|e| format!("Failed to recognize image: {}", e))?;
+                .map_err(|e| {
+                    self.circuit_breaker.record_failure();
+                    format!("Failed to recognize image: {}", e)
+                })?;
 
             let mean_confidence = tesseract.mean_text_conf()
                 .unwrap_or(0.0) as f64 / 100.0;
 
+            self.circuit_breaker.record_success();
             Ok(OcrResult {
                 text,
                 confidence: mean_confidence,
@@ -127,6 +186,7 @@ impl TesseractEngine {
         #[cfg(not(feature = "tesseract-rs"))]
         {
             // Placeholder implementation when tesseract feature is not enabled
+            self.circuit_breaker.record_success();
             Ok(OcrResult {
                 text: "Placeholder OCR result (tesseract feature not enabled)".to_string(),
                 confidence: 0.95,
@@ -139,7 +199,7 @@ impl TesseractEngine {
     }
 
     /// Perform OCR on image bytes
-    pub fn recognize_bytes(&self, image_data: &[u8], _format: &str) -> Result<OcrResult, String> {
+    pub fn recognize_bytes(&self, _image_data: &[u8], _format: &str) -> Result<OcrResult, String> {
         #[cfg(feature = "tesseract-rs")]
         {
             let mut tesseract = tesseract_rs::Tesseract::new(None, &self.config.language)
@@ -255,22 +315,50 @@ impl TesseractEngine {
     }
 
     /// Update configuration
-    pub fn update_config(&mut self, config: OcrConfig) {
+    pub fn update_config(&mut self, config: OcrConfig) -> Result<(), String> {
         self.config = config;
         #[cfg(feature = "tesseract-rs")]
         {
             let tesseract = tesseract_rs::Tesseract::new(None, &self.config.language)
-                .expect("Failed to initialize Tesseract");
+                .map_err(|e| {
+                    let context = ErrorContext::new(
+                        ErrorSeverity::Error,
+                        "TESSERACT_INIT_FAILED",
+                        &format!("Failed to initialize Tesseract: {}", e),
+                        "tesseract_engine",
+                    );
+                    eprintln!("[Tesseract Engine] Error: {}", context.message);
+                    context.message
+                })?;
             tesseract
                 .set_page_seg_mode(TessPageSegMode::PSM_AUTO)
-                .expect("Failed to set page segmentation mode");
+                .map_err(|e| {
+                    let context = ErrorContext::new(
+                        ErrorSeverity::Error,
+                        "TESSERACT_SET_MODE_FAILED",
+                        &format!("Failed to set page segmentation mode: {}", e),
+                        "tesseract_engine",
+                    );
+                    eprintln!("[Tesseract Engine] Error: {}", context.message);
+                    context.message
+                })?;
             if self.config.preserve_interword_spaces {
                 tesseract
                     .set_variable("preserve_interword_spaces", "1")
-                    .expect("Failed to set variable");
+                    .map_err(|e| {
+                        let context = ErrorContext::new(
+                            ErrorSeverity::Error,
+                            "TESSERACT_SET_VAR_FAILED",
+                            &format!("Failed to set variable: {}", e),
+                            "tesseract_engine",
+                        );
+                        eprintln!("[Tesseract Engine] Error: {}", context.message);
+                        context.message
+                    })?;
             }
             self.tesseract = tesseract;
         }
+        Ok(())
     }
 
     /// Get current configuration
@@ -283,6 +371,7 @@ impl TesseractEngine {
 impl Default for TesseractEngine {
     fn default() -> Self {
         Self::new(OcrConfig::default())
+            .expect("Failed to create default TesseractEngine")
     }
 }
 
@@ -293,7 +382,7 @@ mod tests {
     #[test]
     fn test_engine_creation() {
         let config = OcrConfig::default();
-        let engine = TesseractEngine::new(config);
+        let engine = TesseractEngine::new(config).unwrap();
         assert_eq!(engine.config.language, "eng");
     }
 
@@ -305,7 +394,7 @@ mod tests {
 
     #[test]
     fn test_supported_languages() {
-        let engine = TesseractEngine::new(OcrConfig::default());
+        let engine = TesseractEngine::new(OcrConfig::default()).unwrap();
         let languages = engine.get_supported_languages();
         assert!(languages.contains(&"eng".to_string()));
     }
@@ -558,14 +647,14 @@ mod tests {
 
     #[test]
     fn test_recognize_file_nonexistent() {
-        let engine = TesseractEngine::new(OcrConfig::default());
+        let engine = TesseractEngine::new(OcrConfig::default()).unwrap();
         let result = engine.recognize_file("nonexistent.png");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_recognize_bytes() {
-        let engine = TesseractEngine::new(OcrConfig::default());
+        let engine = TesseractEngine::new(OcrConfig::default()).unwrap();
         let data = vec![1, 2, 3, 4];
         let result = engine.recognize_bytes(&data, "png");
         assert!(result.is_ok());
@@ -573,7 +662,7 @@ mod tests {
 
     #[test]
     fn test_recognize_bytes_empty() {
-        let engine = TesseractEngine::new(OcrConfig::default());
+        let engine = TesseractEngine::new(OcrConfig::default()).unwrap();
         let data = vec![];
         let result = engine.recognize_bytes(&data, "png");
         assert!(result.is_ok());
@@ -581,42 +670,43 @@ mod tests {
 
     #[test]
     fn test_recognize_with_layout_nonexistent() {
-        let engine = TesseractEngine::new(OcrConfig::default());
+        let engine = TesseractEngine::new(OcrConfig::default()).unwrap();
         let result = engine.recognize_with_layout("nonexistent.png");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_update_config() {
-        let mut engine = TesseractEngine::new(OcrConfig::default());
+        let mut engine = TesseractEngine::new(OcrConfig::default()).unwrap();
         let new_config = OcrConfig {
             language: "spa".to_string(),
             page_segmentation_mode: 6,
             oem_mode: 1,
             preserve_interword_spaces: false,
         };
-        engine.update_config(new_config);
+        let result = engine.update_config(new_config);
+        assert!(result.is_ok());
         assert_eq!(engine.config.language, "spa");
     }
 
     #[test]
     fn test_get_config() {
         let config = OcrConfig::default();
-        let engine = TesseractEngine::new(config.clone());
+        let engine = TesseractEngine::new(config.clone()).unwrap();
         let retrieved_config = engine.get_config();
         assert_eq!(retrieved_config.language, config.language);
     }
 
     #[test]
     fn test_supported_languages_count() {
-        let engine = TesseractEngine::new(OcrConfig::default());
+        let engine = TesseractEngine::new(OcrConfig::default()).unwrap();
         let languages = engine.get_supported_languages();
         assert!(languages.len() > 10);
     }
 
     #[test]
     fn test_supported_languages_contains_common() {
-        let engine = TesseractEngine::new(OcrConfig::default());
+        let engine = TesseractEngine::new(OcrConfig::default()).unwrap();
         let languages = engine.get_supported_languages();
         assert!(languages.contains(&"eng".to_string()));
         assert!(languages.contains(&"spa".to_string()));

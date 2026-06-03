@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::error_handling::CircuitBreaker;
+use crate::config_service::ExportConfigService;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)]
@@ -59,12 +62,19 @@ pub enum ErrorType {
 }
 
 pub struct FormulaEngine {
+    config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
     // In production, use a proper formula engine library like calamine or similar
 }
 
 impl FormulaEngine {
     pub fn new() -> Self {
-        Self {}
+        let config_service = Arc::new(ExportConfigService::new());
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
+        Self {
+            config_service,
+            circuit_breaker,
+        }
     }
 
     /// Evaluate a formula string
@@ -73,13 +83,33 @@ impl FormulaEngine {
         formula: &str,
         cell_values: &HashMap<String, FormulaResult>,
     ) -> Result<FormulaResult, FormulaError> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err(FormulaError {
+                message: "Circuit breaker is open, blocking formula evaluation".to_string(),
+                error_type: ErrorType::Calc,
+            });
+        }
+
         if !formula.starts_with('=') {
             // It's a literal value
-            return self.parse_literal(formula);
+            let result = self.parse_literal(formula);
+            if result.is_ok() {
+                self.circuit_breaker.record_success();
+            } else {
+                self.circuit_breaker.record_failure();
+            }
+            return result;
         }
 
         let formula_expr = &formula[1..]; // Remove '='
-        self.evaluate_expression(formula_expr, cell_values)
+        let result = self.evaluate_expression(formula_expr, cell_values);
+        if result.is_ok() {
+            self.circuit_breaker.record_success();
+        } else {
+            self.circuit_breaker.record_failure();
+        }
+        result
     }
 
     fn parse_literal(&self, value: &str) -> Result<FormulaResult, FormulaError> {
@@ -179,7 +209,12 @@ impl FormulaEngine {
                         }
                         left_val / right_val
                     }
-                    _ => unreachable!(),
+                    _ => {
+                        return Some(Err(FormulaError {
+                            message: format!("Unknown operator: {}", op),
+                            error_type: ErrorType::Value,
+                        }))
+                    }
                 };
 
                 return Some(Ok(FormulaResult::Number(result)));

@@ -1,5 +1,4 @@
 use super::{RtfParagraphStyle, RtfTextStyle};
-use super::style::RtfAlignment;
 use serde::{Deserialize, Serialize};
 
 /// RTF 段落类型
@@ -108,6 +107,7 @@ impl RtfParagraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::style::RtfAlignment;
 
     #[test]
     fn test_rtf_paragraph_new() {

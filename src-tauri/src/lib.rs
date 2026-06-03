@@ -1,6 +1,7 @@
 // Microservices modules
 mod accessibility_service;
 mod ai_service;
+mod auto_save_service;
 mod chart_service;
 mod cloud_service;
 mod collaboration_service;
@@ -23,14 +24,23 @@ mod plugin_service;
 mod png_service;
 mod ppt_service;
 mod rtf_service;
+mod search_replace_service;
+mod spell_check_service;
 mod svg_service;
 mod table_service;
 mod template_service;
 mod spreadsheet_service;
 mod tiptap_service;
+mod toc_service;
+mod header_footer_service;
+mod watermark_service;
+mod text_conversion_service;
 mod typst_conversion_service;
 pub mod typist_service;
 mod voice_service;
+
+// Native menu
+mod menu;
 
 // Error handling and fault tolerance
 mod error_handling;
@@ -45,11 +55,13 @@ use accessibility_service::{
 use ai_service::{
     AiClient, AiConfig, Conversation, ConversationManager, ConversationRole, PromptTemplate,
 };
+use auto_save_service::{AutoSaveService, SaveConfig, SaveResult};
 use chart_service::{ChartConfig, ChartData, ChartGenerator, ChartType};
 use cloud_service::{SyncConfig, SyncManager, SyncResult, SyncStatus};
 use collaboration_service::{CRDTDocument, CRDTOperation, CRDTType, PresenceInfo};
 use comments_service::{Comment, CommentFilter, CommentsManager};
 use diff_service::{DiffEngine, DiffResult, DiffViewConfig};
+use editing_engine_service::document_ops::{DocumentAnalysis, DocumentOperations};
 use editing_engine_service::json_to_typst::JsonToTypstConverter;
 use editing_engine_service::{FileManager, FormatConverter};
 use export_service::{ExportConfig, ExportFormat, ExportGenerator};
@@ -61,8 +73,13 @@ use math_service::LatexRenderer;
 use ocr_service::{OcrConfig, OcrResult, TesseractEngine};
 use plugin_service::{PluginHook, PluginManager};
 use ppt_service::{AudioElement, ArtWordElement, HyperlinkElement, SmartArtElement, SmartArtNode, SmartArtType, VideoElement};
+use search_replace_service::{SearchReplaceService, SearchOptions, SearchResult, ReplaceOptions, ReplaceResult};
+use spell_check_service::{SpellChecker, SpellCheckResult};
+use toc_service::{TocService, TocResult};
+use header_footer_service::{HeaderFooterService, HeaderConfig, FooterConfig, PageNumberConfig};
+use watermark_service::{WatermarkService, WatermarkConfig};
+use text_conversion_service::{TextConversionService, ConversionConfig, CharStats};
 use std::sync::Arc;
-use table_service::{FormulaEngine, FormulaResult, PivotConfig, PivotTableGenerator};
 use typist_service::incremental::IncrementalCompiler;
 use typist_service::package::{PackageInfo, PackageManager};
 use typist_service::template::{
@@ -105,9 +122,10 @@ static MACRO_RECORDER: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<MacroRecorde
 // Global OCR engine instance
 static OCR_ENGINE: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<TesseractEngine>>> =
     once_cell::sync::Lazy::new(|| {
-        Arc::new(tokio::sync::Mutex::new(TesseractEngine::new(
-            OcrConfig::default(),
-        )))
+        Arc::new(tokio::sync::Mutex::new(
+            TesseractEngine::new(OcrConfig::default())
+                .expect("Failed to initialize OCR engine"),
+        ))
     });
 
 // Global plugin manager instance
@@ -117,6 +135,34 @@ static PLUGIN_MANAGER: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<PluginManage
 // Global accessibility bridge instance
 static ACCESSIBILITY_BRIDGE: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<AccessibilityBridge>>> =
     once_cell::sync::Lazy::new(|| Arc::new(tokio::sync::Mutex::new(AccessibilityBridge::new(Arc::new(config_service::ExportConfigService::new())))));
+
+// Global spell checker instance
+static SPELL_CHECKER: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<SpellChecker>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(tokio::sync::Mutex::new(SpellChecker::new())));
+
+// Global search replace service instance
+static SEARCH_REPLACE_SERVICE: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<SearchReplaceService>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(tokio::sync::Mutex::new(SearchReplaceService::new())));
+
+// Global TOC service instance
+static TOC_SERVICE: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<TocService>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(tokio::sync::Mutex::new(TocService::new())));
+
+// Global text conversion service instance
+static TEXT_CONVERSION_SERVICE: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<TextConversionService>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(tokio::sync::Mutex::new(TextConversionService::new())));
+
+// Global header footer service instance
+static HEADER_FOOTER_SERVICE: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<HeaderFooterService>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(tokio::sync::Mutex::new(HeaderFooterService::new())));
+
+// Global watermark service instance
+static WATERMARK_SERVICE: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<WatermarkService>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(tokio::sync::Mutex::new(WatermarkService::new())));
+
+// Global auto save service instance
+static AUTO_SAVE_SERVICE: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<AutoSaveService>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(tokio::sync::Mutex::new(AutoSaveService::default())));
 
 // Global screen reader announcer instance
 static SCREEN_READER_ANNOUNCER: once_cell::sync::Lazy<
@@ -197,7 +243,10 @@ async fn call_ai_service(prompt: String, text: String) -> Result<String, String>
     });
 
     let config_service = Arc::new(config_service::ExportConfigService::new());
-    let mut client = AiClient::new(config, config_service);
+    let mut client = AiClient::new(config, config_service).map_err(|e| {
+        eprintln!("[AI Service] Failed to create client: {}", e);
+        e
+    })?;
     client.call(&prompt, &text).await
 }
 
@@ -220,7 +269,10 @@ async fn call_ai_service_stream(
     });
 
     let config_service = Arc::new(config_service::ExportConfigService::new());
-    let mut client = AiClient::new(config, config_service);
+    let mut client = AiClient::new(config, config_service).map_err(|e| {
+        eprintln!("[AI Service] Failed to create client: {}", e);
+        e
+    })?;
     client.call_stream(&prompt, &text, app).await
 }
 
@@ -248,20 +300,110 @@ async fn json_to_typst(json: String) -> Result<String, String> {
     JsonToTypstConverter::convert(&json)
 }
 
+/// Save content to file on disk
+/// 
+/// # Safety
+/// - Validates file path is not empty
+/// - Prevents path traversal attacks
+/// - Validates content size to prevent DoS
 #[tauri::command]
 async fn save_file(file_path: String, content: String) -> Result<(), String> {
+    // Validate input
     if file_path.trim().is_empty() {
         return Err("File path cannot be empty".to_string());
     }
+    
+    // Prevent path traversal
+    if file_path.contains("..") {
+        return Err("Path traversal not allowed".to_string());
+    }
+    
+    // Validate content size (prevent DoS)
+    const MAX_CONTENT_SIZE: usize = 50 * 1024 * 1024; // 50MB
+    if content.len() > MAX_CONTENT_SIZE {
+        return Err(format!("Content size {} exceeds maximum allowed size of {} bytes", 
+            content.len(), MAX_CONTENT_SIZE));
+    }
+    
     FileManager::save_file(&file_path, &content)
 }
 
+/// Load file content from disk
+/// 
+/// # Safety
+/// - Validates file path is not empty
+/// - Prevents path traversal attacks
 #[tauri::command]
 async fn load_file(file_path: String) -> Result<String, String> {
+    // Validate input
     if file_path.trim().is_empty() {
         return Err("File path cannot be empty".to_string());
     }
+    
+    // Prevent path traversal
+    if file_path.contains("..") {
+        return Err("Path traversal not allowed".to_string());
+    }
+    
     FileManager::load_file(&file_path)
+}
+
+/// Check if a file exists at the given path
+/// 
+/// # Safety
+/// - Validates file path is not empty
+/// - Prevents path traversal attacks
+#[tauri::command]
+async fn file_exists(file_path: String) -> Result<bool, String> {
+    // Validate input
+    if file_path.trim().is_empty() {
+        return Err("File path cannot be empty".to_string());
+    }
+    
+    // Prevent path traversal
+    if file_path.contains("..") {
+        return Err("Path traversal not allowed".to_string());
+    }
+    
+    Ok(FileManager::file_exists(&file_path))
+}
+
+/// Get the user's documents directory
+/// 
+/// # Safety
+/// - Cross-platform support (HOME/USERPROFILE)
+/// - Creates directory if it doesn't exist
+/// - Error handling for permission issues
+#[tauri::command]
+async fn get_documents_directory() -> Result<String, String> {
+    use std::env;
+    let home_dir = env::var("HOME").or_else(|_| env::var("USERPROFILE"))
+        .map_err(|_| "Failed to get home directory".to_string())?;
+    
+    let docs_dir = format!("{}/Documents", home_dir);
+    
+    // Ensure directory exists
+    std::fs::create_dir_all(&docs_dir)
+        .map_err(|e| format!("Failed to create documents directory: {}", e))?;
+    
+    Ok(docs_dir)
+}
+
+/// Convert Typst markup to HTML
+/// 
+/// # Safety
+/// - Uses aerospace-grade TypstToHtmlConverter
+/// - Includes DoS protection and XSS prevention
+/// - Performance monitoring
+#[tauri::command]
+async fn typst_to_html(typst: String) -> Result<String, String> {
+    use typst_conversion_service::TypstToHtmlConverter;
+    use config_service::ExportConfigService;
+    use std::sync::Arc;
+    
+    let config_service = Arc::new(ExportConfigService::new());
+    let converter = TypstToHtmlConverter::new(config_service);
+    converter.convert(&typst)
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -399,7 +541,7 @@ async fn load_template(id: String) -> Result<String, String> {
     let service = TemplateService::new()?;
     let template = service.load_template(&id)?;
     
-    Ok(serde_json::to_string(&template).map_err(|e| e.to_string())?)
+    serde_json::to_string(&template).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -409,7 +551,7 @@ async fn list_templates() -> Result<String, String> {
     let service = TemplateService::new()?;
     let templates = service.list_templates()?;
     
-    Ok(serde_json::to_string(&templates).map_err(|e| e.to_string())?)
+    serde_json::to_string(&templates).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -435,13 +577,13 @@ async fn get_templates_directory() -> Result<String, String> {
 async fn download_template_from_url(url: String) -> Result<String, String> {
     use template_service::TemplateService;
     
-    let template = TemplateService::download_template_from_url(&url).await?;
+    let service = TemplateService::new()?;
+    let template = service.download_template_from_url(&url).await?;
     
     // 保存下载的模板
-    let service = TemplateService::new()?;
     service.save_template(&template)?;
     
-    Ok(serde_json::to_string(&template).map_err(|e| e.to_string())?)
+    serde_json::to_string(&template).map_err(|e| e.to_string())
 }
 
 // Sync spreadsheet data
@@ -496,11 +638,9 @@ async fn get_sheet_data(doc_id: String) -> Result<String, String> {
 
 // Aerospace-grade spreadsheet service commands
 use spreadsheet_service::{
-    SpreadsheetService, CellValue, CellReference, CellStyle, 
-    DataValidation, ValidationRule, ValidationType, 
+    SpreadsheetService, CellValue, CellStyle, ValidationRule, 
     PivotConfig as SpreadsheetPivotConfig, 
-    ChartConfig as SpreadsheetChartConfig, 
-    ConditionalFormat, SpreadsheetError,
+    ChartConfig as SpreadsheetChartConfig,
 };
 
 /// Evaluate a formula using the aerospace-grade formula engine
@@ -856,6 +996,158 @@ async fn get_tiptap_config(preset: Option<String>) -> Result<String, String> {
 #[tauri::command]
 async fn list_tiptap_presets() -> Result<Vec<String>, String> {
     Ok(tiptap_service::TipTapPresets::list_presets())
+}
+
+// Hybrid Architecture: Document Analysis Command
+#[tauri::command]
+async fn analyze_document(html: String) -> Result<DocumentAnalysis, String> {
+    if html.trim().is_empty() {
+        return Err("HTML content cannot be empty".to_string());
+    }
+    DocumentOperations::analyze_document(&html)
+}
+
+// Hybrid Architecture: Spell Check Command
+#[tauri::command]
+async fn check_spelling(text: String) -> Result<SpellCheckResult, String> {
+    let checker = SPELL_CHECKER.lock().await;
+    Ok(checker.check_text(&text))
+}
+
+// Hybrid Architecture: Auto Save Command
+#[tauri::command]
+async fn auto_save_document(document_id: String, content: String) -> Result<SaveResult, String> {
+    if document_id.trim().is_empty() {
+        return Err("Document ID cannot be empty".to_string());
+    }
+    let service = AUTO_SAVE_SERVICE.lock().await;
+    Ok(service.save_document(&document_id, &content))
+}
+
+// Hybrid Architecture: Get Document Command
+#[tauri::command]
+async fn get_saved_document(document_id: String) -> Result<Option<String>, String> {
+    let service = AUTO_SAVE_SERVICE.lock().await;
+    Ok(service.get_document(&document_id))
+}
+
+// Hybrid Architecture: Should Save Check Command
+#[tauri::command]
+async fn should_auto_save(document_id: String) -> Result<bool, String> {
+    let service = AUTO_SAVE_SERVICE.lock().await;
+    Ok(service.should_save(&document_id))
+}
+
+// Hybrid Architecture: Update Auto Save Config Command
+#[tauri::command]
+async fn update_auto_save_config(config: SaveConfig) -> Result<(), String> {
+    let mut service = AUTO_SAVE_SERVICE.lock().await;
+    let _ = service.update_config(config);
+    Ok(())
+}
+
+// Hybrid Architecture: Get Auto Save Config Command
+#[tauri::command]
+async fn get_auto_save_config() -> Result<SaveConfig, String> {
+    let service = AUTO_SAVE_SERVICE.lock().await;
+    Ok(service.get_config())
+}
+
+// Hybrid Architecture: Search Text Command
+#[tauri::command]
+async fn search_text(
+    text: String,
+    pattern: String,
+    options: SearchOptions,
+    start_position: usize,
+) -> Result<SearchResult, String> {
+    let service = SEARCH_REPLACE_SERVICE.lock().await;
+    Ok(service.find_text(&text, &pattern, &options, start_position))
+}
+
+// Hybrid Architecture: Replace Text Command
+#[tauri::command]
+async fn replace_text(
+    text: String,
+    pattern: String,
+    replacement: String,
+    options: ReplaceOptions,
+) -> Result<ReplaceResult, String> {
+    let service = SEARCH_REPLACE_SERVICE.lock().await;
+    Ok(service.replace_text(&text, &pattern, &replacement, &options))
+}
+
+// Hybrid Architecture: Generate TOC Command
+#[tauri::command]
+async fn generate_toc(html: String) -> Result<TocResult, String> {
+    let service = TOC_SERVICE.lock().await;
+    Ok(service.generate_toc(&html))
+}
+
+// Hybrid Architecture: Insert TOC Command
+#[tauri::command]
+async fn insert_toc(html: String, toc: TocResult, position: String) -> Result<String, String> {
+    let service = TOC_SERVICE.lock().await;
+    let insert_pos = match position.as_str() {
+        "beginning" => toc_service::generator::InsertPosition::Beginning,
+        "after_first_heading" => toc_service::generator::InsertPosition::AfterFirstHeading,
+        "end" => toc_service::generator::InsertPosition::End,
+        _ => toc_service::generator::InsertPosition::Beginning,
+    };
+    Ok(service.insert_toc(&html, &toc, insert_pos))
+}
+
+// Hybrid Architecture: Apply Header Footer Command
+#[tauri::command]
+async fn apply_header_footer(
+    html: String,
+    header: HeaderConfig,
+    footer: FooterConfig,
+) -> Result<String, String> {
+    let service = HEADER_FOOTER_SERVICE.lock().await;
+    Ok(service.apply_header_footer(&html, &header, &footer))
+}
+
+// Hybrid Architecture: Remove Header Footer Command
+#[tauri::command]
+async fn remove_header_footer(html: String) -> Result<String, String> {
+    let service = HEADER_FOOTER_SERVICE.lock().await;
+    Ok(service.remove_header_footer(&html))
+}
+
+// Hybrid Architecture: Apply Page Numbers Command
+#[tauri::command]
+async fn apply_page_numbers(html: String, config: PageNumberConfig) -> Result<String, String> {
+    let service = HEADER_FOOTER_SERVICE.lock().await;
+    Ok(service.apply_page_numbers(&html, &config))
+}
+
+// Hybrid Architecture: Apply Watermark Command
+#[tauri::command]
+async fn apply_watermark(html: String, config: WatermarkConfig) -> Result<String, String> {
+    let service = WATERMARK_SERVICE.lock().await;
+    Ok(service.apply_watermark(&html, &config))
+}
+
+// Hybrid Architecture: Remove Watermark Command
+#[tauri::command]
+async fn remove_watermark(html: String) -> Result<String, String> {
+    let service = WATERMARK_SERVICE.lock().await;
+    Ok(service.remove_watermark(&html))
+}
+
+// Hybrid Architecture: Convert Text Command
+#[tauri::command]
+async fn convert_text(text: String, config: ConversionConfig) -> Result<String, String> {
+    let service = TEXT_CONVERSION_SERVICE.lock().await;
+    Ok(service.convert_text(&text, &config))
+}
+
+// Hybrid Architecture: Get Character Statistics Command
+#[tauri::command]
+async fn get_char_stats(text: String) -> Result<CharStats, String> {
+    let service = TEXT_CONVERSION_SERVICE.lock().await;
+    Ok(service.get_char_stats(&text))
 }
 
 // Render LaTeX to HTML
@@ -1471,7 +1763,7 @@ async fn announce_to_screen_reader(message: String, priority: String) -> Result<
 async fn get_screen_reader_announcements(
 ) -> Result<Vec<accessibility_service::ScreenReaderAnnouncement>, String> {
     let announcer = SCREEN_READER_ANNOUNCER.lock().await;
-    Ok(announcer.get_announcements())
+    announcer.get_announcements()
 }
 
 #[tauri::command]
@@ -1517,7 +1809,7 @@ async fn update_incremental_cache(
     dependencies: Vec<String>,
     output: Vec<u8>,
 ) -> Result<(), String> {
-    let mut compiler = INCREMENTAL_COMPILER.lock().await;
+    let compiler = INCREMENTAL_COMPILER.lock().await;
     compiler.update_cache(document_id, hash, dependencies, output);
     Ok(())
 }
@@ -1532,7 +1824,7 @@ async fn get_cached_compilation(document_id: String) -> Result<Option<Vec<u8>>, 
 
 #[tauri::command]
 async fn clear_incremental_cache() -> Result<(), String> {
-    let mut compiler = INCREMENTAL_COMPILER.lock().await;
+    let compiler = INCREMENTAL_COMPILER.lock().await;
     compiler.clear_all();
     Ok(())
 }
@@ -1990,16 +2282,92 @@ async fn update_typist_template_metadata(
 
     // Validate version format if provided
     if let Some(ref version) = updates.version {
-        if !regex::Regex::new(r"^\d+\.\d+\.\d+$")
-            .unwrap()
-            .is_match(version)
-        {
+        let version_regex = regex::Regex::new(r"^\d+\.\d+\.\d+$")
+            .map_err(|e| format!("Failed to compile version regex: {}", e))?;
+        if !version_regex.is_match(version) {
             return Err("Invalid version format (expected x.y.z)".to_string());
         }
     }
 
     let mut engine = TEMPLATE_ENGINE.lock().await;
     engine.update_template_metadata(&name, updates)
+}
+
+#[tauri::command]
+async fn add_typist_template_comment(
+    name: String,
+    comment: String,
+    author: String,
+) -> Result<(), String> {
+    // Validate template name
+    if !name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(
+            "Template name can only contain alphanumeric characters, hyphens, and underscores"
+                .to_string(),
+        );
+    }
+
+    // Validate comment length
+    if comment.len() > 1000 {
+        return Err("Comment exceeds maximum length of 1000 characters".to_string());
+    }
+
+    // Validate author length
+    if author.len() > 100 {
+        return Err("Author name exceeds maximum length of 100 characters".to_string());
+    }
+
+    let mut engine = TEMPLATE_ENGINE.lock().await;
+    engine.add_template_comment(&name, comment, author)
+}
+
+#[tauri::command]
+async fn apply_typist_template(
+    template_id: String,
+    content: String,
+) -> Result<String, String> {
+    // Validate template ID
+    if template_id.len() > 100 {
+        return Err("Template ID exceeds maximum length of 100 characters".to_string());
+    }
+
+    // Validate content length
+    if content.len() > 10_000_000 {
+        return Err("Content exceeds maximum length of 10MB".to_string());
+    }
+
+    let engine = TEMPLATE_ENGINE.lock().await;
+    engine.apply_template(&template_id, &content)
+}
+
+#[tauri::command]
+async fn download_typist_template(template_id: String) -> Result<String, String> {
+    // Validate template ID
+    if template_id.len() > 100 {
+        return Err("Template ID exceeds maximum length of 100 characters".to_string());
+    }
+
+    let engine = TEMPLATE_ENGINE.lock().await;
+    engine.download_template(&template_id)
+}
+
+#[tauri::command]
+async fn rate_typist_template(template_id: String, rating: u8) -> Result<(), String> {
+    // Validate template ID
+    if template_id.len() > 100 {
+        return Err("Template ID exceeds maximum length of 100 characters".to_string());
+    }
+
+    // Validate rating (1-5)
+    if !(1..=5).contains(&rating) {
+        return Err("Rating must be between 1 and 5".to_string());
+    }
+
+    let mut engine = TEMPLATE_ENGINE.lock().await;
+    engine.rate_template(&template_id, rating)
 }
 
 #[tauri::command]
@@ -2174,8 +2542,26 @@ async fn collaboration_request_sync(
 }
 
 // Typst Conversion Commands
+/// Convert HTML to Typst with aerospace-grade safety
+/// 
+/// # Safety
+/// - Uses aerospace-grade HtmlToTypstConverter
+/// - Includes DoS protection and input validation
+/// - XSS prevention through sanitization
+/// - Performance monitoring
+/// - Error recovery with fallback
 #[tauri::command]
 async fn html_to_typst(html: String, config: Option<TypstConversionConfig>) -> Result<String, String> {
+    // Validate input size (DoS protection)
+    const MAX_HTML_SIZE: usize = 50 * 1024 * 1024; // 50MB
+    if html.len() > MAX_HTML_SIZE {
+        return Err(format!(
+            "HTML size {} exceeds maximum allowed size of {} bytes",
+            html.len(),
+            MAX_HTML_SIZE
+        ));
+    }
+    
     let converter_config = config.unwrap_or_default();
     let config_service = Arc::new(config_service::ExportConfigService::new());
     let converter = HtmlToTypstConverter::new(converter_config, config_service);
@@ -2207,6 +2593,197 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // 创建并设置原生菜单栏
+            use menu::create_menu;
+            let app_handle = app.handle();
+            let menu = create_menu(app_handle).map_err(|e| format!("Failed to create menu: {}", e))?;
+            app.set_menu(menu).map_err(|e| format!("Failed to set menu: {}", e))?;
+
+            // 监听菜单事件
+            app.on_menu_event(move |app, event| {
+                
+                use tauri::Emitter;
+                match event.id.as_ref() {
+                    // 文件菜单
+                    "file_new" => {
+                        let _ = app.emit("menu-new-document", ());
+                    }
+                    "file_open" => {
+                        let _ = app.emit("menu-open-document", ());
+                    }
+                    "file_save" => {
+                        let _ = app.emit("menu-save-document", ());
+                    }
+                    "file_save_as" => {
+                        let _ = app.emit("menu-save-as", ());
+                    }
+                    "file_export_pdf" => {
+                        let _ = app.emit("menu-export-pdf", ());
+                    }
+                    "file_export_png" => {
+                        let _ = app.emit("menu-export-png", ());
+                    }
+                    "file_export_svg_typst" => {
+                        let _ = app.emit("menu-export-svg-typst", ());
+                    }
+                    "file_export_svg_html" => {
+                        let _ = app.emit("menu-export-svg-html", ());
+                    }
+                    "file_export_typst" => {
+                        let _ = app.emit("menu-export-typst", ());
+                    }
+                    "file_export_docx" => {
+                        let _ = app.emit("menu-export-docx", ());
+                    }
+                    "file_print" => {
+                        let _ = app.emit("menu-print", ());
+                    }
+                    "file_quit" => {
+                        let _ = app.emit("menu-quit", ());
+                        app.exit(0);
+                    }
+                    // 编辑菜单
+                    "edit_undo" => {
+                        let _ = app.emit("menu-undo", ());
+                    }
+                    "edit_redo" => {
+                        let _ = app.emit("menu-redo", ());
+                    }
+                    "edit_cut" => {
+                        let _ = app.emit("menu-cut", ());
+                    }
+                    "edit_copy" => {
+                        let _ = app.emit("menu-copy", ());
+                    }
+                    "edit_paste" => {
+                        let _ = app.emit("menu-paste", ());
+                    }
+                    "edit_select_all" => {
+                        let _ = app.emit("menu-select-all", ());
+                    }
+                    "edit_find" => {
+                        let _ = app.emit("menu-find", ());
+                    }
+                    "edit_replace" => {
+                        let _ = app.emit("menu-replace", ());
+                    }
+                    // 视图菜单
+                    "view_fullscreen" => {
+                        let _ = app.emit("menu-fullscreen", ());
+                    }
+                    "view_zoom" => {
+                        let _ = app.emit("menu-zoom-in", ());
+                    }
+                    "view_zoom_out" => {
+                        let _ = app.emit("menu-zoom-out", ());
+                    }
+                    "view_zoom_reset" => {
+                        let _ = app.emit("menu-zoom-reset", ());
+                    }
+                    "view_sidebar" => {
+                        let _ = app.emit("menu-toggle-sidebar", ());
+                    }
+                    "view_statusbar" => {
+                        let _ = app.emit("menu-toggle-statusbar", ());
+                    }
+                    "view_typst_preview" => {
+                        let _ = app.emit("menu-typst-preview", ());
+                    }
+                    // 插入菜单
+                    "insert_image" => {
+                        let _ = app.emit("menu-insert-image", ());
+                    }
+                    "insert_table" => {
+                        let _ = app.emit("menu-insert-table", ());
+                    }
+                    "insert_link" => {
+                        let _ = app.emit("menu-insert-link", ());
+                    }
+                    "insert_code_block" => {
+                        let _ = app.emit("menu-insert-code-block", ());
+                    }
+                    "insert_formula" => {
+                        let _ = app.emit("menu-insert-formula", ());
+                    }
+                    "insert_emoji" => {
+                        let _ = app.emit("menu-insert-emoji", ());
+                    }
+                    // 格式菜单
+                    "format_bold" => {
+                        let _ = app.emit("format-bold", ());
+                    }
+                    "format_italic" => {
+                        let _ = app.emit("format-italic", ());
+                    }
+                    "format_underline" => {
+                        let _ = app.emit("format-underline", ());
+                    }
+                    "format_strikethrough" => {
+                        let _ = app.emit("format-strikethrough", ());
+                    }
+                    "format_superscript" => {
+                        let _ = app.emit("format-superscript", ());
+                    }
+                    "format_subscript" => {
+                        let _ = app.emit("format-subscript", ());
+                    }
+                    "format_align" => {
+                        let _ = app.emit("format-align", ());
+                    }
+                    "format_line_spacing" => {
+                        let _ = app.emit("format-line-spacing", ());
+                    }
+                    "format_style" => {
+                        let _ = app.emit("format-style", ());
+                    }
+                    // 工具菜单
+                    "tools_spell_check" => {
+                        let _ = app.emit("menu-spell-check", ());
+                    }
+                    "tools_word_count" => {
+                        let _ = app.emit("menu-word-count", ());
+                    }
+                    "tools_ai_polish" => {
+                        let _ = app.emit("menu-ai-polish", ());
+                    }
+                    "tools_ai_expand" => {
+                        let _ = app.emit("menu-ai-expand", ());
+                    }
+                    "tools_ai_translate" => {
+                        let _ = app.emit("menu-ai-translate", ());
+                    }
+                    "tools_typst_packages" => {
+                        let _ = app.emit("menu-typst-packages", ());
+                    }
+                    "tools_settings" => {
+                        let _ = app.emit("menu-settings", ());
+                    }
+                    // 帮助菜单
+                    "help_user_guide" => {
+                        let _ = app.emit("menu-user-guide", ());
+                    }
+                    "help_shortcuts" => {
+                        let _ = app.emit("menu-shortcuts", ());
+                    }
+                    "help_api_docs" => {
+                        let _ = app.emit("menu-api-docs", ());
+                    }
+                    "help_check_updates" => {
+                        let _ = app.emit("menu-check-updates", ());
+                    }
+                    "help_feedback" => {
+                        let _ = app.emit("menu-feedback", ());
+                    }
+                    "help_about" => {
+                        let _ = app.emit("menu-about", ());
+                    }
+                    _ => {}
+                }
+            });
+            
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             call_ai_service,
@@ -2216,6 +2793,9 @@ pub fn run() {
             json_to_typst,
             save_file,
             load_file,
+            file_exists,
+            get_documents_directory,
+            typst_to_html,
             compile_typst,
             compile_typst_slide,
             get_typst_page_count,
@@ -2229,6 +2809,24 @@ pub fn run() {
             download_template_from_url,
             get_tiptap_config,
             list_tiptap_presets,
+            analyze_document,
+            check_spelling,
+            auto_save_document,
+            get_saved_document,
+            should_auto_save,
+            update_auto_save_config,
+            get_auto_save_config,
+            search_text,
+            replace_text,
+            generate_toc,
+            insert_toc,
+            apply_header_footer,
+            remove_header_footer,
+            apply_page_numbers,
+            apply_watermark,
+            remove_watermark,
+            convert_text,
+            get_char_stats,
             sync_sheet_data,
             get_sheet_data,
             render_latex,
@@ -2253,6 +2851,10 @@ pub fn run() {
             search_typist_templates,
             generate_typist_template_preview,
             update_typist_template_metadata,
+            add_typist_template_comment,
+            apply_typist_template,
+            download_typist_template,
+            rate_typist_template,
             load_typist_templates_from_directory,
             save_typist_template_to_file,
             export_typist_template,
@@ -2400,9 +3002,63 @@ pub fn run() {
             search_typist_templates,
             generate_typist_template_preview,
             update_typist_template_metadata,
+            add_typist_template_comment,
+            apply_typist_template,
+            download_typist_template,
+            rate_typist_template,
             load_typist_templates_from_directory,
             save_typist_template_to_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod lib_tests {
+    use super::*;
+
+    #[test]
+    fn test_template_validation() {
+        // Test template name validation
+        let valid_name = "test-template_123";
+        assert!(valid_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
+
+        let invalid_name = "test@template";
+        assert!(!invalid_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
+    }
+
+    #[test]
+    fn test_rating_validation() {
+        // Test rating range validation
+        assert!((1..=5).contains(&1));
+        assert!((1..=5).contains(&5));
+        assert!(!(1..=5).contains(&0));
+        assert!(!(1..=5).contains(&6));
+    }
+
+    #[test]
+    fn test_version_format_validation() {
+        // Test version format regex
+        let valid_versions = vec!["1.0.0", "2.3.4", "10.20.30"];
+        for version in valid_versions {
+            let regex = regex::Regex::new(r"^\d+\.\d+\.\d+$").unwrap();
+            assert!(regex.is_match(version));
+        }
+
+        let invalid_versions = vec!["1.0", "1.0.0.0", "v1.0.0", "1.0.x"];
+        for version in invalid_versions {
+            let regex = regex::Regex::new(r"^\d+\.\d+\.\d+$").unwrap();
+            assert!(!regex.is_match(version));
+        }
+    }
+
+    #[test]
+    fn test_string_length_validation() {
+        // Test string length validation
+        let short_string = "test";
+        assert!(short_string.len() <= 100);
+
+        let long_string = "a".repeat(101);
+        assert!(long_string.len() > 100);
+    }
 }

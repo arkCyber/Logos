@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import type { PresentationDocument, Slide } from '../types/presentation';
+import type { PresentationDocument, Slide } from '../types/presentation'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { PresentationConverter } from '../utils/presentationConverter';
 
 // Props
@@ -104,7 +104,7 @@ function generateSlidevPreview() {
   
   // Create a blob URL for the markdown content
   const blob = new Blob([markdown], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
+  const _url = URL.createObjectURL(blob);
   
   // In a real implementation, this would be served by a Slidev dev server
   // For now, we'll use a data URL approach

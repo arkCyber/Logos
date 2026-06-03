@@ -5,9 +5,12 @@
  */
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use reqwest;
+use crate::error_handling::CircuitBreaker;
+use crate::config_service::ExportConfigService;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Template {
@@ -21,6 +24,8 @@ pub struct Template {
 
 pub struct TemplateService {
     templates_dir: PathBuf,
+    config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl TemplateService {
@@ -34,7 +39,14 @@ impl TemplateService {
                 .map_err(|e| format!("Failed to create templates directory: {}", e))?;
         }
         
-        Ok(Self { templates_dir })
+        let config_service = Arc::new(ExportConfigService::new());
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
+        
+        Ok(Self { 
+            templates_dir,
+            config_service,
+            circuit_breaker,
+        })
     }
     
     pub fn get_templates_directory() -> Result<PathBuf, String> {
@@ -118,23 +130,37 @@ impl TemplateService {
     /**
      * 从URL下载模板
      */
-    pub async fn download_template_from_url(url: &str) -> Result<Template, String> {
+    pub async fn download_template_from_url(&self, url: &str) -> Result<Template, String> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err("Circuit breaker is open, blocking template downloads".to_string());
+        }
+
         let response = reqwest::get(url)
             .await
-            .map_err(|e| format!("Failed to fetch template from URL: {}", e))?;
+            .map_err(|e| {
+                self.circuit_breaker.record_failure();
+                format!("Failed to fetch template from URL: {}", e)
+            })?;
         
         if !response.status().is_success() {
+            self.circuit_breaker.record_failure();
             return Err(format!("HTTP error: {}", response.status()));
         }
         
         let content = response.text()
             .await
-            .map_err(|e| format!("Failed to read response body: {}", e))?;
+            .map_err(|e| {
+                self.circuit_breaker.record_failure();
+                format!("Failed to read response body: {}", e)
+            })?;
         
         // 从URL或内容中提取模板信息
         let id = url.split('/').last().unwrap_or("downloaded-template");
         let name = format!("Downloaded Template ({})", id);
         let description = format!("Template downloaded from {}", url);
+        
+        self.circuit_breaker.record_success();
         
         Ok(Template {
             id: id.to_string(),

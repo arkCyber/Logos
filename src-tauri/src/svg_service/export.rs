@@ -9,9 +9,13 @@
 //! - Fault tolerance and error recovery
 
 use super::{SvgConfig, SvgElement};
+use super::effects::SvgDefs;
+use super::html_parser::{HtmlToSvgOptions, parse_html_layout};
+use super::sanitize::{escape_svg_attribute, escape_svg_text};
 use serde::{Deserialize, Serialize};
 use crate::error_handling::{ErrorContext, ErrorSeverity};
 use crate::config_service::ExportConfigService;
+use crate::svg_service::ensure_module_initialized;
 use std::sync::Arc;
 
 /// SVG 导出选项
@@ -102,6 +106,8 @@ impl SvgExportResult {
 pub struct SvgGraphic {
     /// SVG 配置
     pub config: SvgConfig,
+    /// Reusable defs (gradients, filters, animations)
+    pub defs: SvgDefs,
     /// 元素
     pub elements: Vec<SvgElement>,
 }
@@ -111,8 +117,16 @@ impl SvgGraphic {
     pub fn new() -> Self {
         Self {
             config: SvgConfig::new(),
+            defs: SvgDefs::default(),
             elements: Vec::new(),
         }
+    }
+
+    /// 设置 defs
+    #[allow(dead_code)]
+    pub fn with_defs(mut self, defs: SvgDefs) -> Self {
+        self.defs = defs;
+        self
     }
 
     /// 设置配置
@@ -162,6 +176,7 @@ pub struct SvgExporter {
 impl SvgExporter {
     /// 创建新的导出器
     pub fn new(config_service: Arc<ExportConfigService>) -> Self {
+        ensure_module_initialized();
         Self {
             options: SvgExportOptions::new(),
             config_service,
@@ -175,6 +190,30 @@ impl SvgExporter {
         let svg_config = self.config_service.get_svg_config();
         if html.len() > svg_config.max_html_length {
             return Err(format!("HTML content exceeds maximum length of {}", svg_config.max_html_length));
+        }
+        Ok(())
+    }
+
+    /// Validate text content length against export configuration
+    fn validate_text_length(&self, text: &str) -> Result<(), String> {
+        let svg_config = self.config_service.get_svg_config();
+        if text.len() > svg_config.max_text_length {
+            return Err(format!(
+                "Text content exceeds maximum length of {}",
+                svg_config.max_text_length
+            ));
+        }
+        Ok(())
+    }
+
+    /// Validate all elements in a graphic before export
+    fn validate_graphic(&self, graphic: &SvgGraphic) -> Result<(), String> {
+        self.validate_element_count(graphic.element_count())?;
+        graphic.defs.validate()?;
+        for (index, element) in graphic.elements.iter().enumerate() {
+            element
+                .validate()
+                .map_err(|e| format!("Element at index {} failed validation: {}", index, e))?;
         }
         Ok(())
     }
@@ -235,9 +274,9 @@ impl SvgExporter {
         self.operation_count += 1;
         let start = std::time::Instant::now();
 
-        // Validate element count
-        if let Err(e) = self.validate_element_count(graphic.element_count()) {
-            self.record_error("TOO_MANY_ELEMENTS", &e, "export");
+        // Validate graphic elements and counts
+        if let Err(e) = self.validate_graphic(graphic) {
+            self.record_error("INVALID_GRAPHIC", &e, "export");
             return SvgExportResult::failure(e);
         }
 
@@ -271,6 +310,12 @@ impl SvgExporter {
         }
 
         let graphic = self.html_to_graphic(html_content);
+
+        if let Err(e) = self.validate_graphic(&graphic) {
+            self.record_error("INVALID_HTML_GRAPHIC", &e, "export_from_html");
+            return SvgExportResult::failure(e);
+        }
+
         let svg_content = self.generate_svg(&graphic);
         let generation_time = start.elapsed().as_millis() as u64;
 
@@ -293,31 +338,38 @@ impl SvgExporter {
         let mut svg = String::new();
 
         // SVG 头部
+        let xlink_ns = if graphic.defs.animations.is_empty() {
+            String::new()
+        } else {
+            " xmlns:xlink=\"http://www.w3.org/1999/xlink\"".to_string()
+        };
+        svg.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg version=\"");
+        svg.push_str(match graphic.config.version {
+            super::SvgVersion::V1_0 => "1.0",
+            super::SvgVersion::V1_1 => "1.1",
+            super::SvgVersion::V2_0 => "2.0",
+        });
+        svg.push_str("\" xmlns=\"http://www.w3.org/2000/svg\"");
+        svg.push_str(&xlink_ns);
         svg.push_str(&format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?>
-<svg version="{}.{}" xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}" width="{}" height="{}"{}>"#,
-            match graphic.config.version {
-                super::SvgVersion::V1_0 => "1.0",
-                super::SvgVersion::V1_1 => "1.1",
-                super::SvgVersion::V2_0 => "2.0",
-            },
-            match graphic.config.version {
-                super::SvgVersion::V1_0 => "0",
-                super::SvgVersion::V1_1 => "1",
-                super::SvgVersion::V2_0 => "0",
-            },
+            " viewBox=\"{} {} {} {}\" width=\"{}\" height=\"{}\"",
             graphic.config.view_box.x,
             graphic.config.view_box.y,
             graphic.config.view_box.width,
             graphic.config.view_box.height,
             graphic.config.width,
-            graphic.config.height,
-            if graphic.config.preserve_aspect_ratio { "\n  preserveAspectRatio=\"xMidYMid meet\"" } else { "" }
+            graphic.config.height
         ));
+        if graphic.config.preserve_aspect_ratio {
+            svg.push_str("\n  preserveAspectRatio=\"xMidYMid meet\"");
+        }
+        svg.push('>');
 
         if !self.options.compress {
             svg.push('\n');
         }
+
+        svg.push_str(&graphic.defs.to_svg_string(&self.options.indent));
 
         // 添加元素
         for element in &graphic.elements {
@@ -337,12 +389,15 @@ impl SvgExporter {
             elem.push_str(indent);
         }
 
+        let style_attrs = self.generate_style_attributes(&element.style);
+        let escaped_id = escape_svg_attribute(&element.id);
+
         match element.element_type {
             super::SvgElementType::Rect => {
                 if let Some(rect) = &element.rect {
                     elem.push_str(&format!(
-                        "<rect id=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"{}{}{}",
-                        element.id,
+                        "<rect id=\"{}\" x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"{}{}{}/>",
+                        escaped_id,
                         rect.x,
                         rect.y,
                         rect.width,
@@ -357,19 +412,45 @@ impl SvgExporter {
                         } else {
                             String::new()
                         },
-                        self.generate_style(&element.style)
+                        style_attrs
                     ));
                 }
             }
             super::SvgElementType::Circle => {
                 if let Some(circle) = &element.circle {
                     elem.push_str(&format!(
-                        "<circle id=\"{}\" cx=\"{}\" cy=\"{}\" r=\"{}\"{}",
-                        element.id,
+                        "<circle id=\"{}\" cx=\"{}\" cy=\"{}\" r=\"{}\"{}/>",
+                        escaped_id,
                         circle.cx,
                         circle.cy,
                         circle.r,
-                        self.generate_style(&element.style)
+                        style_attrs
+                    ));
+                }
+            }
+            super::SvgElementType::Ellipse => {
+                if let Some(ellipse) = &element.ellipse {
+                    elem.push_str(&format!(
+                        "<ellipse id=\"{}\" cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\"{}/>",
+                        escaped_id,
+                        ellipse.cx,
+                        ellipse.cy,
+                        ellipse.rx,
+                        ellipse.ry,
+                        style_attrs
+                    ));
+                }
+            }
+            super::SvgElementType::Line => {
+                if let Some(line) = &element.line {
+                    elem.push_str(&format!(
+                        "<line id=\"{}\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"{}/>",
+                        escaped_id,
+                        line.x1,
+                        line.y1,
+                        line.x2,
+                        line.y2,
+                        style_attrs
                     ));
                 }
             }
@@ -377,29 +458,43 @@ impl SvgExporter {
                 if let Some(text) = &element.text {
                     elem.push_str(&format!(
                         "<text id=\"{}\" x=\"{}\" y=\"{}\"{}>{}</text>",
-                        element.id,
+                        escaped_id,
                         text.x,
                         text.y,
-                        self.generate_style(&element.style),
-                        text.text
+                        style_attrs,
+                        escape_svg_text(&text.text)
                     ));
                 }
             }
             super::SvgElementType::Path => {
                 if let Some(path) = &element.path {
                     elem.push_str(&format!(
-                        "<path id=\"{}\" d=\"{}\"{}",
-                        element.id,
-                        path.d,
-                        self.generate_style(&element.style)
+                        "<path id=\"{}\" d=\"{}\"{}/>",
+                        escaped_id,
+                        escape_svg_attribute(&path.d),
+                        style_attrs
                     ));
                 }
             }
-            _ => {
-                elem.push_str(&format!(
-                    "<!-- Unsupported element type: {:?} -->",
-                    element.element_type
-                ));
+            super::SvgElementType::Polygon => {
+                if let Some(polygon) = &element.polygon {
+                    elem.push_str(&format!(
+                        "<polygon id=\"{}\" points=\"{}\"{}/>",
+                        escaped_id,
+                        escape_svg_attribute(&polygon.points_attribute()),
+                        style_attrs
+                    ));
+                }
+            }
+            super::SvgElementType::Polyline => {
+                if let Some(polyline) = &element.polyline {
+                    elem.push_str(&format!(
+                        "<polyline id=\"{}\" points=\"{}\"{}/>",
+                        escaped_id,
+                        escape_svg_attribute(&polyline.points_attribute()),
+                        style_attrs
+                    ));
+                }
             }
         }
 
@@ -410,11 +505,19 @@ impl SvgExporter {
         elem
     }
 
-    /// 生成样式
-    fn generate_style(&self, style: &super::SvgStyle) -> String {
+    /// Generate SVG presentation attributes from style model
+    fn generate_style_attributes(&self, style: &super::SvgStyle) -> String {
         let mut style_str = String::new();
 
-        if let Some(color) = style.fill.color {
+        if let Some(gradient_ref) = &style.fill.gradient_ref {
+            style_str.push_str(&format!(
+                " fill=\"url(#{})\"",
+                escape_svg_attribute(gradient_ref)
+            ));
+            if style.fill.opacity < 1.0 {
+                style_str.push_str(&format!(" fill-opacity=\"{}\"", style.fill.opacity));
+            }
+        } else if let Some(color) = style.fill.color {
             style_str.push_str(&format!(
                 " fill=\"rgb({},{},{})\"",
                 color.0, color.1, color.2
@@ -440,49 +543,43 @@ impl SvgExporter {
         }
 
         if let Some(font) = &style.font {
-            style_str.push_str(&format!(" font-family=\"{}\"", font.family));
+            style_str.push_str(&format!(
+                " font-family=\"{}\"",
+                escape_svg_attribute(&font.family)
+            ));
             style_str.push_str(&format!(" font-size=\"{}\"", font.size));
-            style_str.push_str(&format!(" font-weight=\"{}\"", font.weight));
-            style_str.push_str(&format!(" font-style=\"{}\"", font.style));
+            style_str.push_str(&format!(
+                " font-weight=\"{}\"",
+                escape_svg_attribute(&font.weight)
+            ));
+            style_str.push_str(&format!(
+                " font-style=\"{}\"",
+                escape_svg_attribute(&font.style)
+            ));
         }
 
-        if !style_str.is_empty() {
-            format!(" style=\"{}\"", style_str.trim())
-        } else {
-            String::new()
-        }
+        style_str
     }
 
-    /// HTML 转图形（简化版）
+    /// HTML 转图形（块级布局：标题/段落/样式）
     fn html_to_graphic(&self, html: &str) -> SvgGraphic {
+        let svg_config = self.config_service.get_svg_config();
+        let layout = parse_html_layout(
+            html,
+            &HtmlToSvgOptions {
+                max_text_length: svg_config.max_text_length,
+                max_blocks: svg_config.max_element_count,
+            },
+        );
+
         let mut graphic = SvgGraphic::new();
-        let mut y = 20.0;
-
-        for line in html.lines() {
-            let text = extract_text_from_html(line);
-            if !text.is_empty() {
-                let element = super::SvgElement::text(
-                    format!("text{}", graphic.element_count()),
-                    10.0,
-                    y,
-                    text,
-                );
-                graphic = graphic.with_element(element);
-                y += 20.0;
-            }
-        }
-
-        if graphic.element_count() == 0 {
-            let element =
-                super::SvgElement::text("text0".to_string(), 10.0, 20.0, "SVG".to_string());
-            graphic = graphic.with_element(element);
-        }
-
+        graphic.config = layout.config;
+        graphic.elements = layout.elements;
         graphic
     }
 }
 
-/// 从 HTML 提取文本（简化版）
+/// 从 HTML 提取文本（简化版，剥离标签）
 fn extract_text_from_html(html: &str) -> String {
     let mut result = html.to_string();
     while let Some(start) = result.find('<') {
@@ -827,5 +924,172 @@ mod tests {
         let result = exporter.export_from_html(&long_html);
         assert!(!result.success);
         assert!(result.error.unwrap().contains("exceeds maximum length"));
+    }
+
+    #[test]
+    fn test_escape_svg_text() {
+        use crate::svg_service::sanitize::{escape_svg_attribute, escape_svg_text};
+        assert_eq!(
+            escape_svg_text("<script>&\"</script>"),
+            "&lt;script&gt;&amp;\"&lt;/script&gt;"
+        );
+        assert_eq!(escape_svg_attribute("\"quoted\""), "&quot;quoted&quot;");
+    }
+
+    #[test]
+    fn test_export_with_defs_and_gradient_fill() {
+        use crate::svg_service::effects::{SvgGradientStop, SvgLinearGradient};
+        use crate::svg_service::style::SvgFill;
+        use crate::svg_service::{SvgDefs, SvgElement, SvgStyle};
+
+        let config_service = Arc::new(ExportConfigService::new());
+        let mut exporter = SvgExporter::new(config_service);
+        let defs = SvgDefs {
+            linear_gradients: vec![SvgLinearGradient {
+                id: "grad1".to_string(),
+                x1: 0.0,
+                y1: 0.0,
+                x2: 1.0,
+                y2: 0.0,
+                stops: vec![
+                    SvgGradientStop::new(0.0, (255, 0, 0), 1.0).unwrap(),
+                    SvgGradientStop::new(1.0, (0, 0, 255), 1.0).unwrap(),
+                ],
+            }],
+            ..Default::default()
+        };
+        let style = SvgStyle::new().with_fill(SvgFill::new().with_gradient_ref("grad1".to_string()));
+        let graphic = SvgGraphic::new()
+            .with_defs(defs)
+            .with_element(
+                SvgElement::rect("rect1".to_string(), 10.0, 10.0, 100.0, 50.0).with_style(style),
+            );
+        let result = exporter.export(&graphic);
+        assert!(result.success);
+        let svg = String::from_utf8(result.svg_data).unwrap();
+        assert!(svg.contains("<defs>"));
+        assert!(svg.contains("fill=\"url(#grad1)\""));
+    }
+
+    #[test]
+    fn test_export_from_html_with_headings() {
+        let config_service = Arc::new(ExportConfigService::new());
+        let mut exporter = SvgExporter::new(config_service);
+        let result = exporter.export_from_html("<h1>Title</h1><p>Paragraph</p>");
+        assert!(result.success);
+        let svg = String::from_utf8(result.svg_data).unwrap();
+        assert!(svg.contains("Title"));
+        assert!(svg.contains("Paragraph"));
+    }
+
+    #[test]
+    fn test_export_from_html_with_margin_and_border() {
+        let config_service = Arc::new(ExportConfigService::new());
+        let mut exporter = SvgExporter::new(config_service);
+        let html = "<p style=\"margin: 8px; border: 1px solid #000000; background-color: #eeeeee;\">Boxed</p>";
+        let result = exporter.export_from_html(html);
+        assert!(result.success);
+        let svg = String::from_utf8(result.svg_data).unwrap();
+        assert!(svg.contains("<rect"));
+        assert!(svg.contains("stroke="));
+        assert!(svg.contains("Boxed"));
+    }
+
+    #[test]
+    fn test_svg_exporter_export_all_element_types() {
+        use crate::svg_service::{SvgElement, SvgElementType, SvgPath, SvgPoint};
+
+        let config_service = Arc::new(ExportConfigService::new());
+        let mut exporter = SvgExporter::new(config_service);
+        let graphic = SvgGraphic::new()
+            .with_element(SvgElement::rect(
+                "rect1".to_string(),
+                0.0,
+                0.0,
+                50.0,
+                20.0,
+            ))
+            .with_element(SvgElement::circle(
+                "circle1".to_string(),
+                25.0,
+                25.0,
+                10.0,
+            ))
+            .with_element(SvgElement::ellipse(
+                "ellipse1".to_string(),
+                30.0,
+                30.0,
+                15.0,
+                8.0,
+            ))
+            .with_element(SvgElement::line(
+                "line1".to_string(),
+                0.0,
+                0.0,
+                100.0,
+                100.0,
+            ))
+            .with_element(
+                SvgElement::new("path1".to_string(), SvgElementType::Path)
+                    .with_path(SvgPath::new("M 0 0 L 10 10".to_string())),
+            )
+            .with_element(SvgElement::polygon(
+                "polygon1".to_string(),
+                vec![
+                    SvgPoint::new(0.0, 0.0),
+                    SvgPoint::new(10.0, 0.0),
+                    SvgPoint::new(5.0, 10.0),
+                ],
+            ))
+            .with_element(SvgElement::polyline(
+                "polyline1".to_string(),
+                vec![SvgPoint::new(0.0, 0.0), SvgPoint::new(5.0, 5.0)],
+            ))
+            .with_element(SvgElement::text(
+                "text1".to_string(),
+                5.0,
+                15.0,
+                "<safe>".to_string(),
+            ));
+
+        let result = exporter.export(&graphic);
+        assert!(result.success);
+        let svg = String::from_utf8(result.svg_data).unwrap();
+        assert!(svg.contains("<ellipse"));
+        assert!(svg.contains("<line"));
+        assert!(svg.contains("<polygon"));
+        assert!(svg.contains("<polyline"));
+        assert!(svg.contains("&lt;safe&gt;"));
+        assert!(!svg.contains("Unsupported element type"));
+    }
+
+    #[test]
+    fn test_validate_text_length_too_long_via_html() {
+        let config_service = Arc::new(ExportConfigService::new());
+        let mut exporter = SvgExporter::new(config_service.clone());
+        let svg_config = config_service.get_svg_config();
+        let long_line = "x".repeat(svg_config.max_text_length + 1);
+        let html = format!("<p>{}</p>", long_line);
+        let result = exporter.export_from_html(&html);
+        assert!(result.success);
+        let svg = String::from_utf8(result.svg_data).unwrap();
+        assert!(svg.contains("SVG"));
+    }
+
+    #[test]
+    fn test_export_rejects_invalid_graphic() {
+        use crate::svg_service::SvgElement;
+
+        let config_service = Arc::new(ExportConfigService::new());
+        let mut exporter = SvgExporter::new(config_service);
+        let graphic = SvgGraphic::new().with_element(SvgElement::circle(
+            "bad".to_string(),
+            f64::INFINITY,
+            0.0,
+            10.0,
+        ));
+        let result = exporter.export(&graphic);
+        assert!(!result.success);
+        assert!(result.error.unwrap().contains("failed validation"));
     }
 }

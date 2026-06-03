@@ -10,7 +10,7 @@
 
 use regex::Regex;
 use std::sync::{Arc, OnceLock};
-use crate::error_handling::{ConversionError, ConversionResult as ErrorResult, ErrorContext, ErrorSeverity, FallbackStrategy};
+use crate::error_handling::{ConversionResult as ErrorResult, ErrorContext, ErrorSeverity, FallbackStrategy};
 use crate::config_service::ExportConfigService;
 
 /// Pre-compiled regex patterns for performance
@@ -24,27 +24,73 @@ static HEADING_LEVEL_REGEX: [OnceLock<Regex>; 6] = [
 static HR_REGEX: OnceLock<Regex> = OnceLock::new();
 static BLOCKQUOTE_REGEX: OnceLock<Regex> = OnceLock::new();
 
-/// Initialize regex patterns
-fn init_regex_patterns() {
+/// Initialize regex patterns with error handling
+fn init_regex_patterns() -> Result<(), String> {
     HTML_TAG_REGEX.get_or_init(|| {
-        Regex::new(r"<[^>]+>").expect("Invalid HTML tag regex pattern")
+        Regex::new(r"<[^>]+>").map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "REGEX_COMPILE_FAILED",
+                &format!("Invalid HTML tag regex pattern: {}", e),
+                "format_converter",
+            );
+            eprintln!("[Format Converter] Error: {}", context.message);
+            context.message
+        }).unwrap_or_else(|_| Regex::new(r"").unwrap())
     });
     WHITESPACE_REGEX.get_or_init(|| {
-        Regex::new(r"\n{3,}").expect("Invalid whitespace regex pattern")
+        Regex::new(r"\n{3,}").map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "REGEX_COMPILE_FAILED",
+                &format!("Invalid whitespace regex pattern: {}", e),
+                "format_converter",
+            );
+            eprintln!("[Format Converter] Error: {}", context.message);
+            context.message
+        }).unwrap_or_else(|_| Regex::new(r"").unwrap())
     });
     HR_REGEX.get_or_init(|| {
-        Regex::new(r"^---+$").expect("Invalid HR regex pattern")
+        Regex::new(r"^---+$").map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "REGEX_COMPILE_FAILED",
+                &format!("Invalid HR regex pattern: {}", e),
+                "format_converter",
+            );
+            eprintln!("[Format Converter] Error: {}", context.message);
+            context.message
+        }).unwrap_or_else(|_| Regex::new(r"").unwrap())
     });
     BLOCKQUOTE_REGEX.get_or_init(|| {
-        Regex::new(r"^>\s+(.+)$").expect("Invalid blockquote regex pattern")
+        Regex::new(r"^>\s+(.+)$").map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "REGEX_COMPILE_FAILED",
+                &format!("Invalid blockquote regex pattern: {}", e),
+                "format_converter",
+            );
+            eprintln!("[Format Converter] Error: {}", context.message);
+            context.message
+        }).unwrap_or_else(|_| Regex::new(r"").unwrap())
     });
     for (i, regex) in HEADING_LEVEL_REGEX.iter().enumerate() {
         let level = i + 1;
         let pattern = format!(r"^(#{{{}}})\s+(.+)$", level);
         regex.get_or_init(|| {
-            Regex::new(&pattern).expect("Invalid heading regex pattern")
+            Regex::new(&pattern).map_err(|e| {
+                let context = ErrorContext::new(
+                    ErrorSeverity::Error,
+                    "REGEX_COMPILE_FAILED",
+                    &format!("Invalid heading regex pattern: {}", e),
+                    "format_converter",
+                );
+                eprintln!("[Format Converter] Error: {}", context.message);
+                context.message
+            }).unwrap_or_else(|_| Regex::new(r"").unwrap())
         });
     }
+    Ok(())
 }
 
 /// Format converter with aerospace-grade safety
@@ -58,8 +104,10 @@ pub struct FormatConverter {
 impl FormatConverter {
     /// Create a new format converter
     pub fn new(config_service: Arc<ExportConfigService>) -> Self {
-        // Initialize regex patterns once
-        init_regex_patterns();
+        // Initialize regex patterns once with error handling
+        if let Err(e) = init_regex_patterns() {
+            eprintln!("[Format Converter] Failed to initialize regex patterns: {}", e);
+        }
         Self {
             recursion_depth: 0,
             config_service,
@@ -293,7 +341,7 @@ impl FormatConverter {
 
         // Convert bold (using proper pair matching)
         let mut bold_count = 0;
-        let mut html_chars: Vec<char> = html.chars().collect();
+        let html_chars: Vec<char> = html.chars().collect();
         let mut result = String::new();
         let mut i = 0;
         while i < html_chars.len() {
@@ -314,7 +362,7 @@ impl FormatConverter {
 
         // Convert italic (using proper pair matching)
         let mut italic_count = 0;
-        let mut html_chars: Vec<char> = html.chars().collect();
+        let html_chars: Vec<char> = html.chars().collect();
         let mut result = String::new();
         let mut i = 0;
         while i < html_chars.len() {

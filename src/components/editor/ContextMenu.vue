@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import DOMPurify from 'dompurify';
 
 interface Props {
   show: boolean;
@@ -151,8 +152,8 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleEscape);
 });
 
-// Icon SVGs
-const icons: Record<string, string> = {
+// Icon SVGs (static, trusted content)
+const rawIcons: Record<string, string> = {
   cut: '<path d="M6 4v16"/><path d="M6 12l12-8"/><path d="M6 12l12 8"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   paste: '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/>',
@@ -177,6 +178,17 @@ const icons: Record<string, string> = {
   'image-change': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
   reset: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>'
 };
+
+// Sanitize icons once on mount
+const icons = computed(() => {
+  const sanitized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(rawIcons)) {
+    sanitized[key] = DOMPurify.sanitize(value, {
+      USE_PROFILES: { svg: true, svgFilters: true }
+    });
+  }
+  return sanitized;
+});
 </script>
 
 <template>

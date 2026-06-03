@@ -95,7 +95,7 @@ export class CursorTracker {
       return;
     }
 
-    const { from, to } = this.editor.state.selection;
+    const { from, to: _to } = this.editor.state.selection;
     if (from !== null) {
       this.trackLocalPosition(from);
     }

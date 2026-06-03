@@ -10,7 +10,6 @@
 
 use super::{ConversionResult, TypstConversionConfig};
 use std::time::Instant;
-use crate::error_handling::{ConversionError, ErrorContext, ErrorSeverity, FallbackStrategy};
 use crate::config_service::ExportConfigService;
 use std::sync::Arc;
 
@@ -331,5 +330,206 @@ impl HtmlToTypstConverter {
 impl Default for HtmlToTypstConverter {
     fn default() -> Self {
         Self::new(TypstConversionConfig::default(), Arc::new(ExportConfigService::new()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_convert_empty() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("");
+        assert!(result.success);
+        assert!(!result.typst_code.is_empty());
+    }
+
+    #[test]
+    fn test_convert_whitespace_only() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("   \n\n   ");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_convert_heading() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<h1>Heading 1</h1>");
+        assert!(result.success);
+        assert!(result.typst_code.contains("= Heading 1"));
+    }
+
+    #[test]
+    fn test_convert_heading_levels() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<h1>H1</h1><h2>H2</h2><h3>H3</h3>");
+        assert!(result.success);
+        assert!(result.typst_code.contains("= H1"));
+        assert!(result.typst_code.contains("== H2"));
+        assert!(result.typst_code.contains("=== H3"));
+    }
+
+    #[test]
+    fn test_convert_paragraph() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<p>This is a paragraph</p>");
+        assert!(result.success);
+        assert!(result.typst_code.contains("This is a paragraph"));
+    }
+
+    #[test]
+    fn test_convert_bold() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<strong>bold text</strong>");
+        assert!(result.success);
+        assert!(result.typst_code.contains("*bold text*"));
+    }
+
+    #[test]
+    fn test_convert_italic() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<em>italic text</em>");
+        assert!(result.success);
+        assert!(result.typst_code.contains("_italic text_"));
+    }
+
+    #[test]
+    fn test_convert_code() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<code>inline code</code>");
+        assert!(result.success);
+        assert!(result.typst_code.contains("`inline code`"));
+    }
+
+    #[test]
+    fn test_convert_list() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<ul><li>Item 1</li><li>Item 2</li></ul>");
+        assert!(result.success);
+        assert!(result.typst_code.contains("- Item 1"));
+        assert!(result.typst_code.contains("- Item 2"));
+    }
+
+    #[test]
+    fn test_convert_mixed_content() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<h1>Title</h1><p>Paragraph with <strong>bold</strong> text</p>");
+        assert!(result.success);
+        assert!(result.typst_code.contains("= Title"));
+        assert!(result.typst_code.contains("Paragraph"));
+    }
+
+    #[test]
+    fn test_text_escaping() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<p>Text with *special* chars</p>");
+        assert!(result.success);
+        // Special characters should be escaped
+        assert!(result.typst_code.contains("\\*"));
+    }
+
+    #[test]
+    fn test_convert_with_fallback() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert_with_fallback("<p>Test</p>");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_html_to_plain_text() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.html_to_plain_text("<p>Plain text</p>");
+        assert!(result.contains("Plain text"));
+        assert!(!result.contains("<p>"));
+    }
+
+    #[test]
+    fn test_fallback_typst() {
+        let error_msg = "Test error";
+        let fallback = HtmlToTypstConverter::fallback_typst(error_msg);
+        assert!(fallback.contains("Conversion Error"));
+        assert!(fallback.contains(error_msg));
+    }
+
+    #[test]
+    fn test_input_size_validation() {
+        let converter = HtmlToTypstConverter::default();
+        let large_input = "a".repeat(100_000_000); // 100MB
+        let result = converter.convert(&large_input);
+        assert!(!result.success);
+        assert!(result.error.is_some());
+    }
+
+    #[test]
+    fn test_malformed_html() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<p>Unclosed paragraph");
+        assert!(result.success); // Should handle gracefully
+    }
+
+    #[test]
+    fn test_unicode_content() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<p>Hello 世界 🌍</p>");
+        assert!(result.success);
+        assert!(result.typst_code.contains("Hello"));
+    }
+
+    #[test]
+    fn test_special_characters() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<p>Special: & < > \" '</p>");
+        assert!(result.success);
+        // Should escape special characters
+    }
+
+    #[test]
+    fn test_nested_tags() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<p><strong>Bold <em>italic</em></strong></p>");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_line_breaks() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<p>Line 1<br>Line 2</p>");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_performance_large_document() {
+        let converter = HtmlToTypstConverter::default();
+        let large_html = "<p>Test</p>".repeat(1000);
+        let start = std::time::Instant::now();
+        let result = converter.convert(&large_html);
+        let duration = start.elapsed();
+        assert!(result.success);
+        assert!(duration.as_secs() < 1, "Conversion took too long: {:?}", duration);
+    }
+
+    #[test]
+    fn test_empty_tags() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<p></p>");
+        assert!(result.success);
+    }
+
+    #[test]
+    fn test_script_tag_sanitization() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<script>alert('XSS')</script>");
+        assert!(result.success);
+        // Script tags should be removed or escaped
+        assert!(!result.typst_code.contains("<script>"));
+    }
+
+    #[test]
+    fn test_xss_prevention() {
+        let converter = HtmlToTypstConverter::default();
+        let result = converter.convert("<p onclick=\"alert('XSS')\">Click</p>");
+        assert!(result.success);
+        // onclick should be removed in the conversion
     }
 }

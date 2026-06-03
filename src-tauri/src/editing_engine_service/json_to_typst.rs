@@ -11,7 +11,7 @@
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;
-use crate::error_handling::{ConversionError, ConversionResult as ErrorResult, ErrorContext, ErrorSeverity, FallbackStrategy};
+use crate::error_handling::{ConversionResult as ErrorResult, ErrorContext, ErrorSeverity, FallbackStrategy};
 use crate::config_service::ExportConfigService;
 
 /// JSON to Typst converter with aerospace-grade safety

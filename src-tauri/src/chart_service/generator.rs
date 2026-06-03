@@ -10,9 +10,16 @@
 
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
-use crate::error_handling::{ErrorContext, ErrorSeverity};
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker};
 use crate::config_service::ExportConfigService;
+use crate::svg_service::sanitize::{escape_svg_text, validate_svg_color};
 use std::sync::Arc;
+
+/// Performance threshold for warning (in milliseconds)
+const PERFORMANCE_WARNING_THRESHOLD_MS: u128 = 1000;
+
+/// Performance threshold for critical warning (in milliseconds)
+const PERFORMANCE_CRITICAL_THRESHOLD_MS: u128 = 5000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -84,16 +91,42 @@ pub struct ChartGenerator {
     config_service: Arc<ExportConfigService>,
     operation_count: u64,
     last_error: Option<ErrorContext>,
+    circuit_breaker: CircuitBreaker,
     // In production, this would use plotters or similar Rust charting library
 }
 
 impl ChartGenerator {
+    /// Creates a new chart generator instance
+    /// 
+    /// # Arguments
+    /// * `config_service` - The configuration service
+    /// 
+    /// # Returns
+    /// A new ChartGenerator instance
     pub fn new(config_service: Arc<ExportConfigService>) -> Self {
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             config_service,
             operation_count: 0,
             last_error: None,
+            circuit_breaker,
         }
+    }
+
+    /// Get the performance warning threshold
+    /// 
+    /// # Returns
+    /// The performance warning threshold in milliseconds
+    pub fn performance_warning_threshold_ms() -> u128 {
+        PERFORMANCE_WARNING_THRESHOLD_MS
+    }
+
+    /// Get the performance critical threshold
+    /// 
+    /// # Returns
+    /// The performance critical threshold in milliseconds
+    pub fn performance_critical_threshold_ms() -> u128 {
+        PERFORMANCE_CRITICAL_THRESHOLD_MS
     }
 
     /// Validate chart dimensions
@@ -166,26 +199,74 @@ impl ChartGenerator {
         self.last_error = None;
     }
 
+    /// Reset operation count
+    pub fn reset_operation_count(&mut self) {
+        self.operation_count = 0;
+    }
+
+    /// Sanitize user-visible chart text for SVG output
+    fn sanitize_text(&self, value: &str) -> Result<String, String> {
+        Ok(escape_svg_text(value))
+    }
+
+    /// Validate and normalize chart color values
+    fn sanitize_color(&self, value: &str) -> Result<String, String> {
+        validate_svg_color(value)
+    }
+
+    /// Build a sanitized `<text>` element
+    fn svg_text(&self, x: f64, y: f64, text: &str, attrs: &str) -> Result<String, String> {
+        let safe_text = self.sanitize_text(text)?;
+        Ok(format!(
+            r#"<text x="{}" y="{}" {}>{}</text>"#,
+            x, y, attrs, safe_text
+        ))
+    }
+
     /// Generate chart SVG with validation
+    /// 
+    /// # Arguments
+    /// * `request` - The chart render request
+    /// 
+    /// # Returns
+    /// Result containing the SVG string or an error message
+    /// 
+    /// # Performance
+    /// Logs a warning if processing takes longer than PERFORMANCE_WARNING_THRESHOLD_MS
+    /// Logs a critical warning if processing takes longer than PERFORMANCE_CRITICAL_THRESHOLD_MS
+    /// 
+    /// # Security
+    /// Validates dimensions, title, labels, and data point count
     pub fn generate(&mut self, request: ChartRenderRequest) -> Result<String, String> {
+        let start_time = Instant::now();
         self.operation_count += 1;
         let config = request.config.unwrap_or_default();
+
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let error = "Circuit breaker is open, blocking chart generation".to_string();
+            self.record_error("CIRCUIT_BREAKER_OPEN", &error, "generate");
+            return Err(error);
+        }
 
         // Validate dimensions
         if let Err(e) = self.validate_dimensions(config.width, config.height) {
             self.record_error("INVALID_DIMENSIONS", &e, "generate");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate title
         if let Err(e) = self.validate_title(&request.data.title) {
             self.record_error("INVALID_TITLE", &e, "generate");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate data point count
         if let Err(e) = self.validate_data_point_count(request.data.datasets.len()) {
             self.record_error("INVALID_DATA_COUNT", &e, "generate");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
@@ -193,24 +274,50 @@ impl ChartGenerator {
         for label in &request.data.labels {
             if let Err(e) = self.validate_label(label) {
                 self.record_error("INVALID_LABEL", &e, "generate");
+                self.circuit_breaker.record_failure();
                 return Err(e);
             }
         }
 
         // Validate data
-        self.validate_data(&request.data)?;
+        if let Err(e) = self.validate_data(&request.data) {
+            self.record_error("INVALID_DATA", &e, "generate");
+            self.circuit_breaker.record_failure();
+            return Err(e);
+        }
+
+        let background_color = self
+            .sanitize_color(&config.background_color)
+            .map_err(|e| {
+                self.record_error("INVALID_BACKGROUND", &e, "generate");
+                self.circuit_breaker.record_failure();
+                e
+            })?;
 
         // Generate SVG based on chart type
         let svg = match request.chart_type {
-            ChartType::Pie => self.generate_pie_chart(&request.data, &config),
-            ChartType::Bar => self.generate_bar_chart(&request.data, &config),
-            ChartType::Line => self.generate_line_chart(&request.data, &config),
-            ChartType::Area => self.generate_area_chart(&request.data, &config),
-            ChartType::Scatter => self.generate_scatter_chart(&request.data, &config),
-            ChartType::Doughnut => self.generate_doughnut_chart(&request.data, &config),
+            ChartType::Pie => self.generate_pie_chart(&request.data, &config, &background_color),
+            ChartType::Bar => self.generate_bar_chart(&request.data, &config, &background_color),
+            ChartType::Line => self.generate_line_chart(&request.data, &config, &background_color),
+            ChartType::Area => self.generate_area_chart(&request.data, &config, &background_color),
+            ChartType::Scatter => {
+                self.generate_scatter_chart(&request.data, &config, &background_color)
+            }
+            ChartType::Doughnut => {
+                self.generate_doughnut_chart(&request.data, &config, &background_color)
+            }
         }?;
 
+        // Performance monitoring
+        let elapsed = start_time.elapsed();
+        if elapsed.as_millis() > PERFORMANCE_CRITICAL_THRESHOLD_MS {
+            eprintln!("Chart generation CRITICAL performance warning: took {}ms", elapsed.as_millis());
+        } else if elapsed.as_millis() > PERFORMANCE_WARNING_THRESHOLD_MS {
+            eprintln!("Chart generation performance warning: took {}ms", elapsed.as_millis());
+        }
+
         self.last_error = None;
+        self.circuit_breaker.record_success();
         Ok(svg)
     }
 
@@ -232,7 +339,12 @@ impl ChartGenerator {
         Ok(())
     }
 
-    fn generate_pie_chart(&self, data: &ChartData, config: &ChartConfig) -> Result<String, String> {
+    fn generate_pie_chart(
+        &self,
+        data: &ChartData,
+        config: &ChartConfig,
+        background_color: &str,
+    ) -> Result<String, String> {
         let total: f64 = data.datasets.iter().map(|d| d.value).sum();
         let mut current_angle = 0.0;
         let center_x = config.width as f64 / 2.0;
@@ -245,17 +357,19 @@ impl ChartGenerator {
         );
         svg.push_str(&format!(
             r#"<rect width="100%" height="100%" fill="{}"/>"#,
-            config.background_color
+            background_color
         ));
 
         if config.show_legend {
             svg.push_str(&self.generate_legend(data, config, 10, 10)?);
         }
 
-        svg.push_str(&format!(
-            r#"<text x="{}" y="30" text-anchor="middle" font-size="20" font-weight="bold">{}</text>"#,
-            center_x, data.title
-        ));
+        svg.push_str(&self.svg_text(
+            center_x,
+            30.0,
+            &data.title,
+            r#"text-anchor="middle" font-size="20" font-weight="bold""#,
+        )?);
 
         for (i, point) in data.datasets.iter().enumerate() {
             let slice_angle = (point.value / total) * 360.0;
@@ -272,7 +386,7 @@ impl ChartGenerator {
 
             let large_arc_flag = if slice_angle > 180.0 { 1 } else { 0 };
 
-            let color = point.color.clone().unwrap_or_else(|| self.get_color(i));
+            let color = self.resolve_point_color(i, point.color.as_deref())?;
 
             svg.push_str(&format!(
                 r#"<path d="M {} {} L {} {} A {} {} 0 {} 1 {} {} Z" fill="{}" stroke="white" stroke-width="2"/>"#,
@@ -286,10 +400,12 @@ impl ChartGenerator {
             let label_x = center_x + label_radius * mid_rad.cos();
             let label_y = center_y + label_radius * mid_rad.sin();
 
-            svg.push_str(&format!(
-                r#"<text x="{}" y="{}" text-anchor="middle" dominant-baseline="middle" font-size="12" fill="white">{}</text>"#,
-                label_x, label_y, point.label
-            ));
+            svg.push_str(&self.svg_text(
+                label_x,
+                label_y,
+                &point.label,
+                r#"text-anchor="middle" dominant-baseline="middle" font-size="12" fill="white""#,
+            )?);
 
             current_angle = end_angle;
         }
@@ -298,7 +414,12 @@ impl ChartGenerator {
         Ok(svg)
     }
 
-    fn generate_bar_chart(&self, data: &ChartData, config: &ChartConfig) -> Result<String, String> {
+    fn generate_bar_chart(
+        &self,
+        data: &ChartData,
+        config: &ChartConfig,
+        background_color: &str,
+    ) -> Result<String, String> {
         let padding = 60;
         let chart_width = config.width - padding * 2;
         let chart_height = config.height - padding * 2;
@@ -312,13 +433,15 @@ impl ChartGenerator {
         );
         svg.push_str(&format!(
             r#"<rect width="100%" height="100%" fill="{}"/>"#,
-            config.background_color
+            background_color
         ));
 
-        svg.push_str(&format!(
-            r#"<text x="{}" y="30" text-anchor="middle" font-size="20" font-weight="bold">{}</text>"#,
-            config.width / 2, data.title
-        ));
+        svg.push_str(&self.svg_text(
+            config.width as f64 / 2.0,
+            30.0,
+            &data.title,
+            r#"text-anchor="middle" font-size="20" font-weight="bold""#,
+        )?);
 
         // Y-axis
         svg.push_str(&format!(
@@ -361,7 +484,7 @@ impl ChartGenerator {
             let x = padding as f64 + i as f64 * (bar_width + bar_gap);
             let y = (config.height - padding) as f64 - bar_height;
 
-            let color = point.color.clone().unwrap_or_else(|| self.get_color(i));
+            let color = self.resolve_point_color(i, point.color.as_deref())?;
 
             svg.push_str(&format!(
                 r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="black" stroke-width="1"/>"#,
@@ -393,6 +516,7 @@ impl ChartGenerator {
         &self,
         data: &ChartData,
         config: &ChartConfig,
+        background_color: &str,
     ) -> Result<String, String> {
         let padding = 60;
         let chart_width = config.width - padding * 2;
@@ -405,13 +529,15 @@ impl ChartGenerator {
         );
         svg.push_str(&format!(
             r#"<rect width="100%" height="100%" fill="{}"/>"#,
-            config.background_color
+            background_color
         ));
 
-        svg.push_str(&format!(
-            r#"<text x="{}" y="30" text-anchor="middle" font-size="20" font-weight="bold">{}</text>"#,
-            config.width / 2, data.title
-        ));
+        svg.push_str(&self.svg_text(
+            config.width as f64 / 2.0,
+            30.0,
+            &data.title,
+            r#"text-anchor="middle" font-size="20" font-weight="bold""#,
+        )?);
 
         // Grid
         if config.show_grid {
@@ -456,7 +582,7 @@ impl ChartGenerator {
             }
 
             // Data point
-            let color = point.color.clone().unwrap_or_else(|| self.get_color(i));
+            let color = self.resolve_point_color(i, point.color.as_deref())?;
             svg.push_str(&format!(
                 r#"<circle cx="{}" cy="{}" r="5" fill="{}" stroke="black" stroke-width="1"/>"#,
                 x, y, color
@@ -484,9 +610,10 @@ impl ChartGenerator {
         &self,
         data: &ChartData,
         config: &ChartConfig,
+        background_color: &str,
     ) -> Result<String, String> {
         // Similar to line chart but with filled area
-        let mut line_svg = self.generate_line_chart(data, config)?;
+        let mut line_svg = self.generate_line_chart(data, config, background_color)?;
         // Add fill to the path
         line_svg = line_svg.replace(r#"fill="none""#, r#"fill="rgba(59, 130, 246, 0.3)""#);
         Ok(line_svg)
@@ -496,6 +623,7 @@ impl ChartGenerator {
         &self,
         data: &ChartData,
         config: &ChartConfig,
+        background_color: &str,
     ) -> Result<String, String> {
         let padding = 60;
         let chart_width = config.width - padding * 2;
@@ -508,13 +636,15 @@ impl ChartGenerator {
         );
         svg.push_str(&format!(
             r#"<rect width="100%" height="100%" fill="{}"/>"#,
-            config.background_color
+            background_color
         ));
 
-        svg.push_str(&format!(
-            r#"<text x="{}" y="30" text-anchor="middle" font-size="20" font-weight="bold">{}</text>"#,
-            config.width / 2, data.title
-        ));
+        svg.push_str(&self.svg_text(
+            config.width as f64 / 2.0,
+            30.0,
+            &data.title,
+            r#"text-anchor="middle" font-size="20" font-weight="bold""#,
+        )?);
 
         // Axes
         svg.push_str(&format!(
@@ -540,7 +670,7 @@ impl ChartGenerator {
             let y =
                 (config.height - padding) as f64 - (point.value / max_value) * chart_height as f64;
 
-            let color = point.color.clone().unwrap_or_else(|| self.get_color(i));
+            let color = self.resolve_point_color(i, point.color.as_deref())?;
             svg.push_str(&format!(
                 r#"<circle cx="{}" cy="{}" r="8" fill="{}" stroke="black" stroke-width="2" opacity="0.7"/>"#,
                 x, y, color
@@ -563,9 +693,10 @@ impl ChartGenerator {
         &self,
         data: &ChartData,
         config: &ChartConfig,
+        background_color: &str,
     ) -> Result<String, String> {
         // Similar to pie chart but with a hole in the middle
-        let mut svg = self.generate_pie_chart(data, config)?;
+        let mut svg = self.generate_pie_chart(data, config, background_color)?;
         let center_x = config.width as f64 / 2.0;
         let center_y = config.height as f64 / 2.0;
         let inner_radius = (config.width.min(config.height) as f64 / 2.0) * 0.4;
@@ -575,7 +706,7 @@ impl ChartGenerator {
             "</svg>",
             &format!(
                 r#"<circle cx="{}" cy="{}" r="{}" fill="{}"/></svg>"#,
-                center_x, center_y, inner_radius, config.background_color
+                center_x, center_y, inner_radius, background_color
             ),
         );
 
@@ -593,21 +724,28 @@ impl ChartGenerator {
         let mut current_y = y;
 
         for (i, point) in data.datasets.iter().enumerate() {
-            let color = point.color.clone().unwrap_or_else(|| self.get_color(i));
+            let color = self.resolve_point_color(i, point.color.as_deref())?;
             legend.push_str(&format!(
                 r#"<rect x="{}" y="{}" width="15" height="15" fill="{}"/>"#,
                 x, current_y, color
             ));
-            legend.push_str(&format!(
-                r#"<text x="{}" y="{}" font-size="12">{}</text>"#,
-                x + 20,
-                current_y + 12,
-                point.label
-            ));
+            legend.push_str(&self.svg_text(
+                (x + 20) as f64,
+                (current_y + 12) as f64,
+                &point.label,
+                r#"font-size="12""#,
+            )?);
             current_y += 20;
         }
 
         Ok(legend)
+    }
+
+    fn resolve_point_color(&self, index: usize, color: Option<&str>) -> Result<String, String> {
+        match color {
+            Some(value) => self.sanitize_color(value),
+            None => Ok(self.get_color(index)),
+        }
     }
 
     fn get_color(&self, index: usize) -> String {
@@ -861,6 +999,27 @@ mod tests {
         assert_eq!(color10, "#3b82f6"); // Should cycle
     }
 
+    fn test_generate_pie_chart_escapes_title() {
+        let generator = ChartGenerator::new(Arc::new(ExportConfigService::new()));
+        let data = ChartData {
+            title: "<script>alert(1)</script>".to_string(),
+            labels: vec!["A".to_string()],
+            datasets: vec![ChartDataPoint {
+                label: "A".to_string(),
+                value: 30.0,
+                color: None,
+            }],
+            x_axis_label: None,
+            y_axis_label: None,
+        };
+        let config = ChartConfig::default();
+        let svg = generator
+            .generate_pie_chart(&data, &config, "#ffffff")
+            .unwrap();
+        assert!(svg.contains("&lt;script&gt;"));
+        assert!(!svg.contains("<script>"));
+    }
+
     #[test]
     fn test_generate_pie_chart() {
         let generator = ChartGenerator::new(Arc::new(ExportConfigService::new()));
@@ -883,7 +1042,7 @@ mod tests {
             y_axis_label: None,
         };
         let config = ChartConfig::default();
-        let result = generator.generate_pie_chart(&data, &config);
+        let result = generator.generate_pie_chart(&data, &config, "#ffffff");
         assert!(result.is_ok());
         let svg = result.unwrap();
         assert!(svg.contains("<svg"));
@@ -912,7 +1071,7 @@ mod tests {
             y_axis_label: None,
         };
         let config = ChartConfig::default();
-        let result = generator.generate_bar_chart(&data, &config);
+        let result = generator.generate_bar_chart(&data, &config, "#ffffff");
         assert!(result.is_ok());
         let svg = result.unwrap();
         assert!(svg.contains("<svg"));
@@ -946,7 +1105,7 @@ mod tests {
             y_axis_label: None,
         };
         let config = ChartConfig::default();
-        let result = generator.generate_line_chart(&data, &config);
+        let result = generator.generate_line_chart(&data, &config, "#ffffff");
         assert!(result.is_ok());
         let svg = result.unwrap();
         assert!(svg.contains("<svg"));
@@ -975,7 +1134,7 @@ mod tests {
             y_axis_label: None,
         };
         let config = ChartConfig::default();
-        let result = generator.generate_area_chart(&data, &config);
+        let result = generator.generate_area_chart(&data, &config, "#ffffff");
         assert!(result.is_ok());
         let svg = result.unwrap();
         assert!(svg.contains("<svg"));
@@ -1004,7 +1163,7 @@ mod tests {
             y_axis_label: None,
         };
         let config = ChartConfig::default();
-        let result = generator.generate_scatter_chart(&data, &config);
+        let result = generator.generate_scatter_chart(&data, &config, "#ffffff");
         assert!(result.is_ok());
         let svg = result.unwrap();
         assert!(svg.contains("<svg"));
@@ -1033,7 +1192,7 @@ mod tests {
             y_axis_label: None,
         };
         let config = ChartConfig::default();
-        let result = generator.generate_doughnut_chart(&data, &config);
+        let result = generator.generate_doughnut_chart(&data, &config, "#ffffff");
         assert!(result.is_ok());
         let svg = result.unwrap();
         assert!(svg.contains("<svg"));
@@ -1264,6 +1423,22 @@ mod tests {
         
         generator.reset_error_state();
         assert!(generator.get_last_error().is_none());
+    }
+
+    #[test]
+    fn test_performance_threshold_getters() {
+        assert_eq!(ChartGenerator::performance_warning_threshold_ms(), PERFORMANCE_WARNING_THRESHOLD_MS);
+        assert_eq!(ChartGenerator::performance_critical_threshold_ms(), PERFORMANCE_CRITICAL_THRESHOLD_MS);
+    }
+
+    #[test]
+    fn test_reset_operation_count() {
+        let mut generator = ChartGenerator::new(Arc::new(ExportConfigService::new()));
+        generator.operation_count = 5;
+        assert_eq!(generator.get_operation_count(), 5);
+        
+        generator.reset_operation_count();
+        assert_eq!(generator.get_operation_count(), 0);
     }
 
     #[test]

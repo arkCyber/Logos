@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import DOMPurify from 'dompurify';
 
 interface Props {
   modelValue: string;
@@ -39,7 +40,11 @@ const renderLatex = async () => {
       latex: latexInput.value,
       displayMode: !props.inline
     });
-    previewHtml.value = html;
+    // Sanitize HTML to prevent XSS attacks
+    const sanitizedHtml = DOMPurify.sanitize(html, {
+      USE_PROFILES: { html: true, mathMl: true }
+    });
+    previewHtml.value = sanitizedHtml;
     isError.value = false;
     errorMessage.value = '';
   } catch (error) {

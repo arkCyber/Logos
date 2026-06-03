@@ -1,3 +1,7 @@
+//! Aerospace-Grade SVG Configuration
+//!
+//! Defines SVG version, viewport, canvas dimensions, and aspect-ratio settings.
+
 use serde::{Deserialize, Serialize};
 
 /// SVG 版本

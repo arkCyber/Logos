@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import { 
   Paintbrush, Clipboard, Scissors, Copy, TrendingUp, Search, FileText, SquareCheck,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, IndentDecrease, IndentIncrease,
-  Heading1, Heading2, Heading3
+  Heading1, Heading2, Heading3, ChevronDown, ChevronUp
 } from 'lucide-vue-next';
 
 interface Props {
@@ -14,6 +15,17 @@ interface Props {
 
 interface Emits {
   (e: 'set-active-tab', tab: string): void;
+  (e: 'new-document'): void;
+  (e: 'open-document'): void;
+  (e: 'save-document'): void;
+  (e: 'save-as'): void;
+  (e: 'print-document'): void;
+  (e: 'export-pdf'): void;
+  (e: 'export-word'): void;
+  (e: 'export-typst'): void;
+  (e: 'export-svg-typst'): void;
+  (e: 'export-svg-html'): void;
+  (e: 'toggle-help'): void;
   (e: 'toggle-bold'): void;
   (e: 'toggle-italic'): void;
   (e: 'toggle-underline'): void;
@@ -27,7 +39,11 @@ interface Emits {
   (e: 'toggle-ordered-list'): void;
   (e: 'increase-indent'): void;
   (e: 'decrease-indent'): void;
-  (e: 'set-heading', level: 1 | 2 | 3): void;
+  (e: 'set-heading', level: 1 | 2 | 3 | 4 | 5 | 6): void;
+  (e: 'toggle-blockquote'): void;
+  (e: 'toggle-code-block'): void;
+  (e: 'insert-horizontal-rule'): void;
+  (e: 'clear-formatting'): void;
   (e: 'update-font-family', font: string): void;
   (e: 'update-font-size', size: number): void;
   (e: 'paste'): void;
@@ -72,13 +88,18 @@ interface Emits {
 defineProps<Props>();
 const emit = defineEmits<Emits>();
 
+// Paragraph group expansion state
+const isParagraphExpanded = ref(false);
+
 const tabs = [
+  { id: 'file', label: '文件' },
   { id: 'home', label: '开始' },
   { id: 'insert', label: '插入' },
   { id: 'layout', label: '布局' },
   { id: 'references', label: '引用' },
   { id: 'review', label: '审阅' },
-  { id: 'view', label: '视图' }
+  { id: 'view', label: '视图' },
+  { id: 'help', label: '帮助' }
 ];
 </script>
 
@@ -105,6 +126,66 @@ const tabs = [
 
     <!-- Ribbon Panels -->
     <div class="ribbon-panels" role="tabpanel" :aria-labelledby="`panel-${activeTab}`">
+      <!-- File Tab Panel -->
+      <div v-if="activeTab === 'file'" :id="`panel-file`" class="ribbon-panel">
+        <!-- Document Group -->
+        <div class="ribbon-group" role="group" aria-label="文档">
+          <div class="group-content">
+            <button class="ribbon-button-large" title="新建文档" aria-label="新建文档" @click="emit('new-document')">
+              <FileText :size="32" />
+              <span>新建</span>
+            </button>
+            <button class="ribbon-button-large" title="打开文档" aria-label="打开文档" @click="emit('open-document')">
+              <FileText :size="32" />
+              <span>打开</span>
+            </button>
+            <button class="ribbon-button-large" title="保存文档" aria-label="保存文档" @click="emit('save-document')">
+              <FileText :size="32" />
+              <span>保存</span>
+            </button>
+          </div>
+          <div class="group-label">文档</div>
+        </div>
+
+        <!-- Export Group -->
+        <div class="ribbon-group" role="group" aria-label="导出">
+          <div class="group-content">
+            <button class="ribbon-button" title="导出 PDF" @click="emit('export-pdf')">
+              <FileText :size="20" />
+              <span>导出 PDF</span>
+            </button>
+            <button class="ribbon-button" title="导出 Word" @click="emit('export-word')">
+              <FileText :size="20" />
+              <span>导出 Word</span>
+            </button>
+            <button class="ribbon-button" title="Export Typst" aria-label="Export Typst" @click="emit('export-typst')">
+              <FileText :size="20" />
+              <span>Export Typst</span>
+            </button>
+            <button class="ribbon-button" title="Export SVG (Typst)" aria-label="Export SVG Typst" @click="emit('export-svg-typst')">
+              <FileText :size="20" />
+              <span>Export SVG (Typst)</span>
+            </button>
+            <button class="ribbon-button" title="Export SVG (HTML)" aria-label="Export SVG HTML" @click="emit('export-svg-html')">
+              <FileText :size="20" />
+              <span>Export SVG (HTML)</span>
+            </button>
+          </div>
+          <div class="group-label">Export</div>
+        </div>
+
+        <!-- Print Group -->
+        <div class="ribbon-group" role="group" aria-label="打印">
+          <div class="group-content">
+            <button class="ribbon-button-large" title="打印文档" aria-label="打印文档" @click="emit('print-document')">
+              <FileText :size="32" />
+              <span>打印</span>
+            </button>
+          </div>
+          <div class="group-label">打印</div>
+        </div>
+      </div>
+
       <!-- Home Tab Panel -->
       <div v-if="activeTab === 'home'" :id="`panel-home`" class="ribbon-panel">
         <!-- Clipboard Group -->
@@ -228,6 +309,38 @@ const tabs = [
               <button class="ribbon-button style-compact" title="标题3" @click="emit('set-heading', 3)">
                 <Heading3 :size="16" />
               </button>
+              <button class="ribbon-button expand-button" title="更多段落选项" @click="isParagraphExpanded = !isParagraphExpanded">
+                <ChevronDown v-if="!isParagraphExpanded" :size="16" />
+                <ChevronUp v-else :size="16" />
+              </button>
+            </div>
+            <!-- Expanded paragraph options -->
+            <div v-if="isParagraphExpanded" class="paragraph-expanded">
+              <div class="expanded-row">
+                <button class="ribbon-button style-compact" title="标题4" @click="emit('set-heading', 4)">
+                  <span class="heading-text">H4</span>
+                </button>
+                <button class="ribbon-button style-compact" title="标题5" @click="emit('set-heading', 5)">
+                  <span class="heading-text">H5</span>
+                </button>
+                <button class="ribbon-button style-compact" title="标题6" @click="emit('set-heading', 6)">
+                  <span class="heading-text">H6</span>
+                </button>
+                <button class="ribbon-button style-compact" title="引用块" @click="emit('toggle-blockquote')">
+                  <span class="heading-text">"</span>
+                </button>
+                <button class="ribbon-button style-compact" title="代码块" @click="emit('toggle-code-block')">
+                  <span class="heading-text">&lt;/&gt;</span>
+                </button>
+              </div>
+              <div class="expanded-row">
+                <button class="ribbon-button style-compact" title="分隔线" @click="emit('insert-horizontal-rule')">
+                  <span class="heading-text">—</span>
+                </button>
+                <button class="ribbon-button style-compact" title="清除格式" @click="emit('clear-formatting')">
+                  <span class="heading-text">A</span>
+                </button>
+              </div>
             </div>
           </div>
           <div class="group-label">段落</div>
@@ -619,6 +732,39 @@ const tabs = [
         </div>
       </div>
 
+      <!-- Help Tab Panel -->
+      <div v-if="activeTab === 'help'" class="ribbon-panel">
+        <!-- Help Group -->
+        <div class="ribbon-group">
+          <div class="group-content">
+            <button class="ribbon-button-large" title="打开帮助" aria-label="打开帮助" @click="emit('toggle-help')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <span>帮助</span>
+            </button>
+          </div>
+          <div class="group-label">帮助</div>
+        </div>
+
+        <!-- Info Group -->
+        <div class="ribbon-group">
+          <div class="group-content">
+            <button class="ribbon-button" title="关于" aria-label="关于">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+              <span>关于</span>
+            </button>
+          </div>
+          <div class="group-label">信息</div>
+        </div>
+      </div>
+
       <!-- Other tabs placeholder - will be implemented in subsequent iterations -->
       <div v-else class="ribbon-panel">
         <div class="ribbon-group">
@@ -632,3 +778,51 @@ const tabs = [
     </div>
   </div>
 </template>
+
+<style scoped>
+.expand-button {
+  margin-left: auto;
+  padding: 0 4px;
+  min-width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expand-button:hover {
+  background: var(--word-button-hover);
+}
+
+.paragraph-expanded {
+  border-top: 1px solid var(--word-divider);
+  padding-top: 8px;
+  margin-top: 8px;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.expanded-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.expanded-row:last-child {
+  margin-bottom: 0;
+}
+
+.heading-text {
+  font-weight: bold;
+  font-size: 12px;
+}
+</style>

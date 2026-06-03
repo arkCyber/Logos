@@ -1,0 +1,96 @@
+/**
+ * Editor Sidebar Layout Styles
+ *
+ * Flex workspace: side panels keep fixed width + full height; canvas compresses.
+ */
+
+.editor-content-wrapper {
+  --editor-canvas-min-width: 160px;
+}
+
+.editor-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.editor-workspace__left,
+.editor-workspace__right {
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+}
+
+.editor-workspace__center {
+  flex: 1 1 auto;
+  min-width: var(--editor-canvas-min-width, 160px);
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-workspace__center .document-canvas {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+.editor-side-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--word-bg-page, #ffffff);
+  border-color: var(--word-border, #d1d5db);
+}
+
+.editor-side-panel--left {
+  border-right: 1px solid var(--word-border, #d1d5db);
+}
+
+.editor-side-panel--right {
+  border-left: 1px solid var(--word-border, #d1d5db);
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.06);
+}
+
+.editor-workspace .split-view-sidebar {
+  width: var(--editor-sidebar-split-width, 400px);
+  min-width: var(--editor-sidebar-split-width, 400px);
+  max-width: var(--editor-sidebar-split-width, 400px);
+}
+
+.editor-workspace .spreadsheet-panel {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: clamp(
+    var(--editor-sidebar-spreadsheet-min-width, 320px),
+    42vw,
+    var(--editor-sidebar-spreadsheet-max-width, 800px)
+  );
+  min-width: var(--editor-sidebar-spreadsheet-min-width, 320px);
+  max-width: var(--editor-sidebar-spreadsheet-max-width, 800px);
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+  z-index: auto;
+}
+
+.dark .editor-side-panel {
+  background: #1e1e1e;
+  border-color: #3e3e42;
+}

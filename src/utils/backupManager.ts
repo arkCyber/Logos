@@ -4,6 +4,7 @@
  */
 
 import { pathManager } from './pathManager';
+import { logger, LogCategory } from './logger';
 
 interface BackupConfig {
   maxBackups: number;
@@ -30,7 +31,7 @@ class BackupManager {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupPath = pathManager.getSystemPath('backups');
     const backupFilename = `${filename}_${timestamp}.json`;
-    const fullPath = pathManager.getFullPath(backupPath, backupFilename);
+    const fullPath = pathManager.getFullPath(backupPath, backupFilename); // eslint-disable-line @typescript-eslint/no-unused-vars
 
     // In a real implementation, this would use Tauri's file system API
     // For now, we'll store in localStorage as a fallback
@@ -42,10 +43,10 @@ class BackupManager {
 
     try {
       localStorage.setItem(`backup_${backupFilename}`, JSON.stringify(backupData));
-      console.log(`Backup created: ${backupFilename}`);
+      logger.debug('Backup created', { backupFilename }, LogCategory.SYSTEM);
       return backupFilename;
     } catch (error) {
-      console.error('Failed to create backup:', error);
+      logger.error('Failed to create backup', error, LogCategory.SYSTEM);
       throw error;
     }
   }
@@ -62,7 +63,7 @@ class BackupManager {
       }
       return null;
     } catch (error) {
-      console.error('Failed to restore backup:', error);
+      logger.error('Failed to restore backup', error, LogCategory.SYSTEM);
       return null;
     }
   }

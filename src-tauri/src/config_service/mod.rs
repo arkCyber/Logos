@@ -12,4 +12,3 @@ pub mod export_config;
 pub mod error;
 
 pub use export_config::ExportConfigService;
-pub use error::ConfigError;

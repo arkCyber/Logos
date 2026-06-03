@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "logos",
+  "productName": "Logos智道办公软件",
   "version": "0.1.0",
-  "identifier": "logos",
+  "identifier": "logos-zhidao-office",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1425",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "logos",
+        "title": "Logos智道办公软件",
         "width": 1080,
         "height": 720,
         "x": 60,

@@ -12,8 +12,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
-use crate::error_handling::{ErrorContext, ErrorSeverity};
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker};
 use crate::config_service::ExportConfigService;
+
+/// Maximum input content size in bytes to prevent DoS attacks
+const MAX_INPUT_SIZE: usize = 10 * 1024 * 1024; // 10MB
+
+/// Performance threshold for warning (in milliseconds)
+const PERFORMANCE_WARNING_THRESHOLD_MS: u128 = 500;
+
+/// Performance threshold for critical warning (in milliseconds)
+const PERFORMANCE_CRITICAL_THRESHOLD_MS: u128 = 2000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AriaAttribute {
@@ -121,16 +130,53 @@ pub struct AccessibilityBridge {
     operation_count: u64,
     last_error: Option<ErrorContext>,
     config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl AccessibilityBridge {
+    /// Creates a new accessibility bridge instance
+    /// 
+    /// # Arguments
+    /// * `config_service` - The configuration service
+    /// 
+    /// # Returns
+    /// A new AccessibilityBridge instance
     pub fn new(config_service: Arc<ExportConfigService>) -> Self {
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             current_tree: None,
             operation_count: 0,
             last_error: None,
             config_service,
+            circuit_breaker,
         }
+    }
+
+    /// Get the maximum input size constant
+    /// 
+    /// # Returns
+    /// The maximum input size in bytes
+    #[allow(dead_code)]
+    pub fn max_input_size() -> usize {
+        MAX_INPUT_SIZE
+    }
+
+    /// Get the performance warning threshold
+    /// 
+    /// # Returns
+    /// The performance warning threshold in milliseconds
+    #[allow(dead_code)]
+    pub fn performance_warning_threshold_ms() -> u128 {
+        PERFORMANCE_WARNING_THRESHOLD_MS
+    }
+
+    /// Get the performance critical threshold
+    /// 
+    /// # Returns
+    /// The performance critical threshold in milliseconds
+    #[allow(dead_code)]
+    pub fn performance_critical_threshold_ms() -> u128 {
+        PERFORMANCE_CRITICAL_THRESHOLD_MS
     }
 
     /// Validate node ID
@@ -188,14 +234,32 @@ impl AccessibilityBridge {
         self.last_error = None;
     }
 
+    /// Reset operation count
+    pub fn reset_operation_count(&mut self) {
+        self.operation_count = 0;
+    }
+
     /// Build accessibility tree from document content with validation
+    /// 
+    /// # Arguments
+    /// * `content` - The document content to build the tree from
+    /// 
+    /// # Returns
+    /// Result containing the accessibility tree or an error message
+    /// 
+    /// # Performance
+    /// Logs a warning if processing takes longer than PERFORMANCE_WARNING_THRESHOLD_MS
+    /// Logs a critical warning if processing takes longer than PERFORMANCE_CRITICAL_THRESHOLD_MS
+    /// 
+    /// # Security
+    /// Validates input size to prevent DoS attacks
     pub fn build_tree(&mut self, content: &str) -> Result<AccessibilityTree, String> {
         self.operation_count += 1;
         let start = Instant::now();
 
         // Validate input size
-        if content.len() > 10 * 1024 * 1024 {
-            let error = "Input content exceeds maximum size of 10MB".to_string();
+        if content.len() > MAX_INPUT_SIZE {
+            let error = format!("Input content exceeds maximum size of {} bytes", MAX_INPUT_SIZE);
             self.record_error("INPUT_TOO_LARGE", &error, "build_tree");
             return Err(error);
         }
@@ -229,6 +293,14 @@ impl AccessibilityBridge {
             return Err(e);
         }
 
+        // Performance monitoring
+        let elapsed = start.elapsed();
+        if elapsed.as_millis() > PERFORMANCE_CRITICAL_THRESHOLD_MS {
+            eprintln!("Accessibility tree build CRITICAL performance warning: took {}ms", elapsed.as_millis());
+        } else if elapsed.as_millis() > PERFORMANCE_WARNING_THRESHOLD_MS {
+            eprintln!("Accessibility tree build performance warning: took {}ms", elapsed.as_millis());
+        }
+
         self.current_tree = Some(tree.clone());
         self.last_error = None;
         Ok(tree)
@@ -247,19 +319,29 @@ impl AccessibilityBridge {
     ) -> Result<(), String> {
         self.operation_count += 1;
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let error = "Circuit breaker is open, blocking accessibility operations".to_string();
+            self.record_error("CIRCUIT_BREAKER_OPEN", &error, "update_node");
+            return Err(error);
+        }
+
         // Validate node ID
         if let Err(e) = self.validate_node_id(&node_id) {
             self.record_error("INVALID_NODE_ID", &e, "update_node");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate text content
         if let Err(e) = self.validate_text(&updates.label, "label") {
             self.record_error("INVALID_LABEL", &e, "update_node");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
         if let Err(e) = self.validate_text(&updates.description, "description") {
             self.record_error("INVALID_DESCRIPTION", &e, "update_node");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
@@ -267,15 +349,18 @@ impl AccessibilityBridge {
             if tree.nodes.contains_key(&node_id) {
                 tree.nodes.insert(node_id.clone(), updates);
                 self.last_error = None;
+                self.circuit_breaker.record_success();
                 Ok(())
             } else {
                 let error = format!("Node {} not found", node_id);
                 self.record_error("NODE_NOT_FOUND", &error, "update_node");
+                self.circuit_breaker.record_failure();
                 Err(error)
             }
         } else {
             let error = "No accessibility tree built".to_string();
             self.record_error("NO_TREE", &error, "update_node");
+            self.circuit_breaker.record_failure();
             Err(error)
         }
     }
@@ -284,23 +369,34 @@ impl AccessibilityBridge {
     pub fn add_node(&mut self, parent_id: String, node: AccessibilityNode) -> Result<(), String> {
         self.operation_count += 1;
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let error = "Circuit breaker is open, blocking accessibility operations".to_string();
+            self.record_error("CIRCUIT_BREAKER_OPEN", &error, "add_node");
+            return Err(error);
+        }
+
         // Validate node IDs
         if let Err(e) = self.validate_node_id(&node.id) {
             self.record_error("INVALID_NODE_ID", &e, "add_node");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
         if let Err(e) = self.validate_node_id(&parent_id) {
             self.record_error("INVALID_PARENT_ID", &e, "add_node");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate text content
         if let Err(e) = self.validate_text(&node.label, "label") {
             self.record_error("INVALID_LABEL", &e, "add_node");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
         if let Err(e) = self.validate_text(&node.description, "description") {
             self.record_error("INVALID_DESCRIPTION", &e, "add_node");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
@@ -310,6 +406,7 @@ impl AccessibilityBridge {
             if tree.nodes.len() >= accessibility_config.max_tree_nodes {
                 let error = format!("Tree exceeds maximum node count of {}", accessibility_config.max_tree_nodes);
                 self.record_error("TREE_TOO_LARGE", &error, "add_node");
+                self.circuit_breaker.record_failure();
                 return Err(error);
             }
 
@@ -322,10 +419,12 @@ impl AccessibilityBridge {
                 }
 
                 self.last_error = None;
+                self.circuit_breaker.record_success();
                 Ok(())
             } else {
                 let error = format!("Parent node {} not found", parent_id);
                 self.record_error("PARENT_NOT_FOUND", &error, "add_node");
+                self.circuit_breaker.record_failure();
                 Err(error)
             }
         } else {
@@ -975,6 +1074,44 @@ mod tests {
             hidden_nodes: 0,
         };
         assert_eq!(stats.total_nodes, 3);
+    }
+
+    #[test]
+    fn test_max_input_size() {
+        assert_eq!(AccessibilityBridge::max_input_size(), MAX_INPUT_SIZE);
+    }
+
+    #[test]
+    fn test_performance_threshold_getters() {
+        assert_eq!(AccessibilityBridge::performance_warning_threshold_ms(), PERFORMANCE_WARNING_THRESHOLD_MS);
+        assert_eq!(AccessibilityBridge::performance_critical_threshold_ms(), PERFORMANCE_CRITICAL_THRESHOLD_MS);
+    }
+
+    #[test]
+    fn test_reset_operation_count() {
+        let mut bridge = AccessibilityBridge::new(Arc::new(ExportConfigService::new()));
+        bridge.build_tree("<html></html>").unwrap();
+        assert!(bridge.get_operation_count() > 0);
+        
+        bridge.reset_operation_count();
+        assert_eq!(bridge.get_operation_count(), 0);
+    }
+
+    #[test]
+    fn test_build_tree_with_max_input_size() {
+        let mut bridge = AccessibilityBridge::new(Arc::new(ExportConfigService::new()));
+        let large_content = "a".repeat(MAX_INPUT_SIZE + 1);
+        let result = bridge.build_tree(&large_content);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exceeds maximum size"));
+    }
+
+    #[test]
+    fn test_build_tree_with_max_input_size_accepted() {
+        let mut bridge = AccessibilityBridge::new(Arc::new(ExportConfigService::new()));
+        let large_content = "a".repeat(MAX_INPUT_SIZE);
+        let result = bridge.build_tree(&large_content);
+        assert!(result.is_ok());
     }
 
     #[test]

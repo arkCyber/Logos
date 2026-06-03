@@ -9,7 +9,11 @@ use crate::spreadsheet_service::style::{Color, Font, FontStyle, FontWeight, Text
 use crate::spreadsheet_service::validation::{ValidationOperator, ValidationType};
 use crate::spreadsheet_service::pivot::PivotValue;
 use crate::spreadsheet_service::charts::LegendPosition;
-use crate::spreadsheet_service::conditional_formatting::{ConditionalFormatType, ComparisonOperator};
+use crate::spreadsheet_service::conditional_formatting::{ConditionalFormatType, ComparisonOperator, ConditionalFormatRule};
+use crate::spreadsheet_service::formula::FormulaResult;
+use crate::spreadsheet_service::pivot::PivotAggregation;
+use crate::spreadsheet_service::charts::ChartType;
+use crate::spreadsheet_service::conditional_formatting::ConditionalFormat;
 
 #[cfg(test)]
 mod integration_tests {

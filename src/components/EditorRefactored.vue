@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue';
+import { ref, onMounted, watch, nextTick } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { EditorContent } from '@tiptap/vue-3';
+import { invoke } from '@tauri-apps/api/core';
 import QuickAccessToolbar from './editor/QuickAccessToolbar.vue';
 import RibbonToolbar from './editor/RibbonToolbar.vue';
 import StatusBar from './editor/StatusBar.vue';
 import { useEditorState } from '../composables/useEditorState';
 import { useDocumentOperations } from '../composables/useDocumentOperations';
+import { exportHtmlToSvg, exportTypstToSvg, promptSaveSvgFile } from '../services/svgExportApi';
+import { logger, LogCategory } from '../utils/logger';
 
 // Use composables
 const {
   isDarkMode,
-  autoSaveEnabled,
+  autoSaveEnabled: _autoSaveEnabled,
   zoomLevel,
   fontSize,
   fontFamily,
@@ -104,7 +107,7 @@ const handleRibbonAction = (action: string, payload?: any) => {
 const handleQuickAccessAction = (action: string) => {
   switch (action) {
     case 'save':
-      console.log('Save document');
+      logger.debug('Save document', {}, LogCategory.SYSTEM);
       break;
     case 'undo':
       undo();
@@ -113,13 +116,54 @@ const handleQuickAccessAction = (action: string) => {
       redo();
       break;
     case 'toggle-search':
-      console.log('Toggle search dialog');
+      logger.debug('Toggle search dialog', {}, LogCategory.SYSTEM);
       break;
   }
 };
 
+/**
+ * Export current editor HTML to SVG via Typst rendering pipeline.
+ */
+const exportTypstSvg = async () => {
+  if (!editor.value) {
+    return;
+  }
+  try {
+    const htmlContent = editor.value.getHTML();
+    const typstCode = await invoke<string>('html_to_typst', { html: htmlContent });
+    const result = await exportTypstToSvg(typstCode);
+    if (result.success && result.text) {
+      await promptSaveSvgFile(result.text, 'document-typst.svg');
+    } else {
+      logger.error('Typst SVG export failed', result.error, LogCategory.SYSTEM);
+    }
+  } catch (error) {
+    logger.error('Typst SVG export failed', error as Error, LogCategory.SYSTEM);
+  }
+};
+
+/**
+ * Export current editor HTML to SVG via svg_service vector pipeline.
+ */
+const exportHtmlSvg = async () => {
+  if (!editor.value) {
+    return;
+  }
+  try {
+    const htmlContent = editor.value.getHTML();
+    const result = await exportHtmlToSvg(htmlContent);
+    if (result.success && result.text) {
+      await promptSaveSvgFile(result.text, 'document-html.svg');
+    } else {
+      logger.error('HTML SVG export failed', result.error, LogCategory.SYSTEM);
+    }
+  } catch (error) {
+    logger.error('HTML SVG export failed', error as Error, LogCategory.SYSTEM);
+  }
+};
+
 onMounted(() => {
-  console.log('Editor mounted');
+  logger.debug('Editor mounted', {}, LogCategory.SYSTEM);
 });
 </script>
 
@@ -154,6 +198,8 @@ onMounted(() => {
       @copy="handleRibbonAction('copy')"
       @update-font-family="handleRibbonAction('update-font-family', $event)"
       @update-font-size="handleRibbonAction('update-font-size', $event)"
+      @export-svg-typst="exportTypstSvg"
+      @export-svg-html="exportHtmlSvg"
     />
 
     <!-- Editor Container -->

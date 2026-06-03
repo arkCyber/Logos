@@ -226,13 +226,13 @@ class Logger {
     const prefix = `[${entry.level.toUpperCase()}] [${entry.category}]`;
 
     const consoleMethod = {
-      [LogLevel.TRACE]: console.log,
-      [LogLevel.DEBUG]: console.log,
-      [LogLevel.INFO]: console.info,
-      [LogLevel.WARNING]: console.warn,
-      [LogLevel.ERROR]: console.error,
-      [LogLevel.CRITICAL]: console.error,
-      [LogLevel.FATAL]: console.error
+      [LogLevel.TRACE]: console.log, // eslint-disable-line no-console
+      [LogLevel.DEBUG]: console.log, // eslint-disable-line no-console
+      [LogLevel.INFO]: console.info, // eslint-disable-line no-console
+      [LogLevel.WARNING]: console.warn, // eslint-disable-line no-console
+      [LogLevel.ERROR]: console.error, // eslint-disable-line no-console
+      [LogLevel.CRITICAL]: console.error, // eslint-disable-line no-console
+      [LogLevel.FATAL]: console.error // eslint-disable-line no-console
     }[entry.level];
 
     consoleMethod(
@@ -254,7 +254,7 @@ class Logger {
     // 在实际应用中，这里应该发送到日志聚合服务
     // 如 ELK, Splunk, CloudWatch 等
     if (this.isDev) {
-      console.log('[Remote Logging]', entry);
+      console.log('[Remote Logging]', entry); // eslint-disable-line no-console
     }
   }
 

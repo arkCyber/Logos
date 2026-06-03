@@ -26,8 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
-use crate::error_handling::{ErrorContext, ErrorSeverity};
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker};
 
 /// Typst 渲染缓存条目
 #[derive(Clone)]
@@ -130,28 +129,34 @@ pub struct ExportGenerator {
     last_error: Option<ErrorContext>,
     typst_cache: TypstRenderCache,
     config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl ExportGenerator {
     pub fn new() -> Self {
+        let config_service = Arc::new(ExportConfigService::new());
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             operation_count: 0,
             last_error: None,
             typst_cache: TypstRenderCache::new(100),
-            config_service: Arc::new(ExportConfigService::new()),
+            config_service,
+            circuit_breaker,
         }
     }
 
     /// Create a new generator with a custom configuration service
     pub fn with_config(config_service: Arc<ExportConfigService>) -> Self {
-        let limits = config_service.get_limits();
+        let _limits = config_service.get_limits();
         let typst_config = config_service.get_typst_config();
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         
         Self {
             operation_count: 0,
             last_error: None,
             typst_cache: TypstRenderCache::new(typst_config.cache.max_entries),
             config_service,
+            circuit_breaker,
         }
     }
 
@@ -252,15 +257,24 @@ impl ExportGenerator {
     pub fn export(&mut self, content: &str, config: &ExportConfig) -> Result<ExportResult, String> {
         self.operation_count += 1;
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let error = "Circuit breaker is open, blocking export operations".to_string();
+            self.record_error("CIRCUIT_BREAKER_OPEN", &error, "export");
+            return Err(error);
+        }
+
         // Validate content
         if let Err(e) = self.validate_content(content) {
             self.record_error("INVALID_CONTENT", &e, "export");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate metadata
         if let Err(e) = self.validate_metadata(&config.metadata) {
             self.record_error("INVALID_METADATA", &e, "export");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
@@ -283,9 +297,13 @@ impl ExportGenerator {
         if let Ok(ref export_result) = result {
             if let Err(e) = self.validate_output_size(export_result.file_size) {
                 self.record_error("OUTPUT_TOO_LARGE", &e, "export");
+                self.circuit_breaker.record_failure();
                 return Err(e);
             }
             self.last_error = None;
+            self.circuit_breaker.record_success();
+        } else {
+            self.circuit_breaker.record_failure();
         }
 
         result

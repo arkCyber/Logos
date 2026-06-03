@@ -39,7 +39,7 @@ export class InputValidator {
   /**
    * 验证输入
    */
-  validate(value: any, context?: string): { valid: boolean; errors: string[] } {
+  validate(value: any, _context?: string): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     for (const rule of this.rules) {

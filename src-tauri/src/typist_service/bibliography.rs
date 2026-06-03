@@ -5,6 +5,28 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::Instant;
+
+/// Maximum number of bibliography entries to prevent memory issues
+const MAX_ENTRIES: usize = 10_000;
+
+/// Maximum entry key length
+const MAX_KEY_LENGTH: usize = 256;
+
+/// Maximum field value length
+const MAX_FIELD_LENGTH: usize = 10_000;
+
+/// Maximum BibTeX input size
+const MAX_BIBTEX_SIZE: usize = 10 * 1024 * 1024; // 10MB
+
+/// Maximum number of cited keys
+const MAX_CITED_KEYS: usize = 10_000;
+
+/// Performance threshold for warning (in milliseconds)
+const PERFORMANCE_WARNING_THRESHOLD_MS: u128 = 100;
+
+/// Performance threshold for critical warning (in milliseconds)
+const PERFORMANCE_CRITICAL_THRESHOLD_MS: u128 = 500;
 
 /// 参考文献类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -49,7 +71,22 @@ pub struct BibEntry {
 }
 
 impl BibEntry {
+    /// Creates a new bibliography entry
+    /// 
+    /// # Arguments
+    /// * `key` - The entry key
+    /// * `entry_type` - The entry type
+    /// 
+    /// # Returns
+    /// A new BibEntry instance
+    /// 
+    /// # Security
+    /// Validates key length to prevent DoS attacks
     pub fn new(key: String, entry_type: BibEntryType) -> Self {
+        if key.len() > MAX_KEY_LENGTH {
+            eprintln!("BibEntry: key exceeds maximum length of {}", MAX_KEY_LENGTH);
+        }
+        
         Self {
             key,
             entry_type,
@@ -71,32 +108,108 @@ impl BibEntry {
         }
     }
 
+    /// Sets the author field
+    /// 
+    /// # Arguments
+    /// * `author` - The author string
+    /// 
+    /// # Returns
+    /// Self for builder pattern
+    /// 
+    /// # Security
+    /// Validates field length to prevent memory issues
     pub fn with_author(mut self, author: String) -> Self {
+        if author.len() > MAX_FIELD_LENGTH {
+            eprintln!("BibEntry: author exceeds maximum length of {}", MAX_FIELD_LENGTH);
+        }
         self.author = Some(author);
         self
     }
 
+    /// Sets the title field
+    /// 
+    /// # Arguments
+    /// * `title` - The title string
+    /// 
+    /// # Returns
+    /// Self for builder pattern
+    /// 
+    /// # Security
+    /// Validates field length to prevent memory issues
     pub fn with_title(mut self, title: String) -> Self {
+        if title.len() > MAX_FIELD_LENGTH {
+            eprintln!("BibEntry: title exceeds maximum length of {}", MAX_FIELD_LENGTH);
+        }
         self.title = Some(title);
         self
     }
 
+    /// Sets the year field
+    /// 
+    /// # Arguments
+    /// * `year` - The year string
+    /// 
+    /// # Returns
+    /// Self for builder pattern
     pub fn with_year(mut self, year: String) -> Self {
         self.year = Some(year);
         self
     }
 
+    /// Sets the journal field
+    /// 
+    /// # Arguments
+    /// * `journal` - The journal string
+    /// 
+    /// # Returns
+    /// Self for builder pattern
+    /// 
+    /// # Security
+    /// Validates field length to prevent memory issues
     pub fn with_journal(mut self, journal: String) -> Self {
+        if journal.len() > MAX_FIELD_LENGTH {
+            eprintln!("BibEntry: journal exceeds maximum length of {}", MAX_FIELD_LENGTH);
+        }
         self.journal = Some(journal);
         self
     }
 
+    /// Sets the publisher field
+    /// 
+    /// # Arguments
+    /// * `publisher` - The publisher string
+    /// 
+    /// # Returns
+    /// Self for builder pattern
+    /// 
+    /// # Security
+    /// Validates field length to prevent memory issues
     pub fn with_publisher(mut self, publisher: String) -> Self {
+        if publisher.len() > MAX_FIELD_LENGTH {
+            eprintln!("BibEntry: publisher exceeds maximum length of {}", MAX_FIELD_LENGTH);
+        }
         self.publisher = Some(publisher);
         self
     }
 
+    /// Adds an extra field
+    /// 
+    /// # Arguments
+    /// * `key` - The field key
+    /// * `value` - The field value
+    /// 
+    /// # Returns
+    /// Self for builder pattern
+    /// 
+    /// # Security
+    /// Validates field lengths to prevent memory issues
     pub fn add_extra_field(mut self, key: String, value: String) -> Self {
+        if key.len() > MAX_KEY_LENGTH {
+            eprintln!("BibEntry: extra field key exceeds maximum length of {}", MAX_KEY_LENGTH);
+        }
+        if value.len() > MAX_FIELD_LENGTH {
+            eprintln!("BibEntry: extra field value exceeds maximum length of {}", MAX_FIELD_LENGTH);
+        }
         self.extra_fields.insert(key, value);
         self
     }
@@ -149,6 +262,10 @@ pub struct Bibliography {
 }
 
 impl Bibliography {
+    /// Creates a new bibliography instance
+    /// 
+    /// # Returns
+    /// A new Bibliography instance with default configuration
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
@@ -157,6 +274,13 @@ impl Bibliography {
         }
     }
 
+    /// Creates a new bibliography instance with custom configuration
+    /// 
+    /// # Arguments
+    /// * `config` - The bibliography configuration
+    /// 
+    /// # Returns
+    /// A new Bibliography instance
     pub fn with_config(config: BibliographyConfig) -> Self {
         Self {
             entries: Vec::new(),
@@ -165,18 +289,61 @@ impl Bibliography {
         }
     }
 
+    /// Adds an entry to the bibliography
+    /// 
+    /// # Arguments
+    /// * `entry` - The bibliography entry to add
+    /// 
+    /// # Security
+    /// Enforces maximum entry limit to prevent memory issues
     pub fn add_entry(&mut self, entry: BibEntry) {
+        if self.entries.len() >= MAX_ENTRIES {
+            eprintln!("Bibliography: maximum entry limit of {} reached", MAX_ENTRIES);
+            return;
+        }
         self.entries.push(entry);
     }
 
+    /// Cites an entry by key
+    /// 
+    /// # Arguments
+    /// * `key` - The entry key to cite
+    /// 
+    /// # Security
+    /// Enforces maximum cited keys limit to prevent memory issues
     pub fn cite(&mut self, key: String) {
+        if self.cited_keys.len() >= MAX_CITED_KEYS {
+            eprintln!("Bibliography: maximum cited keys limit of {} reached", MAX_CITED_KEYS);
+            return;
+        }
         if !self.cited_keys.contains(&key) {
             self.cited_keys.push(key);
         }
     }
 
-    /// 解析 BibTeX 格式
+    /// Parses BibTeX format
+    /// 
+    /// # Arguments
+    /// * `bibtex` - The BibTeX string to parse
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Performance
+    /// Logs a warning if processing takes longer than PERFORMANCE_WARNING_THRESHOLD_MS
+    /// Logs a critical warning if processing takes longer than PERFORMANCE_CRITICAL_THRESHOLD_MS
+    /// 
+    /// # Security
+    /// Validates input size to prevent DoS attacks
     pub fn parse_bibtex(&mut self, bibtex: &str) -> Result<(), String> {
+        let start_time = Instant::now();
+        
+        // Security check: prevent DoS with oversized input
+        if bibtex.len() > MAX_BIBTEX_SIZE {
+            eprintln!("Bibliography: BibTeX input exceeds maximum size of {} bytes", MAX_BIBTEX_SIZE);
+            return Err(format!("BibTeX input exceeds maximum size of {} bytes", MAX_BIBTEX_SIZE));
+        }
+
         let lines: Vec<&str> = bibtex.lines().collect();
         let mut current_entry: Option<BibEntry> = None;
         let mut in_entry = false;
@@ -221,6 +388,14 @@ impl Bibliography {
         // 保存最后一个条目
         if let Some(entry) = current_entry {
             self.add_entry(entry);
+        }
+
+        // Performance monitoring
+        let elapsed = start_time.elapsed();
+        if elapsed.as_millis() > PERFORMANCE_CRITICAL_THRESHOLD_MS {
+            eprintln!("Bibliography CRITICAL performance warning: parse_bibtex took {}ms", elapsed.as_millis());
+        } else if elapsed.as_millis() > PERFORMANCE_WARNING_THRESHOLD_MS {
+            eprintln!("Bibliography performance warning: parse_bibtex took {}ms", elapsed.as_millis());
         }
 
         Ok(())
@@ -388,8 +563,56 @@ impl Bibliography {
     }
 
     /// 获取条目
+    /// 
+    /// # Arguments
+    /// * `key` - The entry key to look up
+    /// 
+    /// # Returns
+    /// The entry if found, None otherwise
     pub fn get_entry(&self, key: &str) -> Option<&BibEntry> {
         self.entries.iter().find(|e| e.key == key)
+    }
+
+    /// Gets the number of entries in the bibliography
+    /// 
+    /// # Returns
+    /// The number of entries
+    pub fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Gets the number of cited keys
+    /// 
+    /// # Returns
+    /// The number of cited keys
+    pub fn cited_count(&self) -> usize {
+        self.cited_keys.len()
+    }
+
+    /// Clears all entries and cited keys
+    /// 
+    /// # Warning
+    /// This will delete all bibliography data
+    pub fn clear_all(&mut self) {
+        self.entries.clear();
+        self.cited_keys.clear();
+    }
+
+    /// Removes an entry by key
+    /// 
+    /// # Arguments
+    /// * `key` - The entry key to remove
+    /// 
+    /// # Returns
+    /// true if the entry was removed, false if not found
+    pub fn remove_entry(&mut self, key: &str) -> bool {
+        if let Some(pos) = self.entries.iter().position(|e| e.key == key) {
+            self.entries.remove(pos);
+            self.cited_keys.retain(|k| k != key);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -684,5 +907,130 @@ mod tests {
         let html = bib.to_html();
         assert!(html.contains("key1"));
         assert!(!html.contains("key2"));
+    }
+
+    #[test]
+    fn test_max_key_length() {
+        let long_key = "a".repeat(MAX_KEY_LENGTH + 1);
+        let entry = BibEntry::new(long_key, BibEntryType::Article);
+        assert_eq!(entry.key.len(), MAX_KEY_LENGTH + 1); // Still created but logged
+    }
+
+    #[test]
+    fn test_max_field_length() {
+        let long_author = "a".repeat(MAX_FIELD_LENGTH + 1);
+        let entry = BibEntry::new("key1".to_string(), BibEntryType::Article)
+            .with_author(long_author);
+        assert_eq!(entry.author.unwrap().len(), MAX_FIELD_LENGTH + 1); // Still set but logged
+    }
+
+    #[test]
+    fn test_max_bibtex_size() {
+        let mut bib = Bibliography::new();
+        let large_bibtex = "a".repeat(MAX_BIBTEX_SIZE + 1);
+        let result = bib.parse_bibtex(&large_bibtex);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_max_entries_limit() {
+        let mut bib = Bibliography::new();
+        
+        // Try to add more entries than MAX_ENTRIES
+        for i in 0..=MAX_ENTRIES {
+            bib.add_entry(BibEntry::new(format!("key{}", i), BibEntryType::Article));
+        }
+        
+        // Should have stopped at MAX_ENTRIES
+        assert_eq!(bib.entry_count(), MAX_ENTRIES);
+    }
+
+    #[test]
+    fn test_max_cited_keys_limit() {
+        let mut bib = Bibliography::new();
+        
+        // Try to cite more keys than MAX_CITED_KEYS
+        for i in 0..=MAX_CITED_KEYS {
+            bib.cite(format!("key{}", i));
+        }
+        
+        // Should have stopped at MAX_CITED_KEYS
+        assert_eq!(bib.cited_count(), MAX_CITED_KEYS);
+    }
+
+    #[test]
+    fn test_entry_count() {
+        let mut bib = Bibliography::new();
+        assert_eq!(bib.entry_count(), 0);
+        
+        bib.add_entry(BibEntry::new("key1".to_string(), BibEntryType::Article));
+        assert_eq!(bib.entry_count(), 1);
+        
+        bib.add_entry(BibEntry::new("key2".to_string(), BibEntryType::Article));
+        assert_eq!(bib.entry_count(), 2);
+    }
+
+    #[test]
+    fn test_cited_count() {
+        let mut bib = Bibliography::new();
+        assert_eq!(bib.cited_count(), 0);
+        
+        bib.cite("key1".to_string());
+        assert_eq!(bib.cited_count(), 1);
+        
+        bib.cite("key2".to_string());
+        assert_eq!(bib.cited_count(), 2);
+        
+        bib.cite("key1".to_string()); // Duplicate
+        assert_eq!(bib.cited_count(), 2);
+    }
+
+    #[test]
+    fn test_clear_all() {
+        let mut bib = Bibliography::new();
+        bib.add_entry(BibEntry::new("key1".to_string(), BibEntryType::Article));
+        bib.cite("key1".to_string());
+        
+        assert_eq!(bib.entry_count(), 1);
+        assert_eq!(bib.cited_count(), 1);
+        
+        bib.clear_all();
+        
+        assert_eq!(bib.entry_count(), 0);
+        assert_eq!(bib.cited_count(), 0);
+    }
+
+    #[test]
+    fn test_remove_entry() {
+        let mut bib = Bibliography::new();
+        bib.add_entry(BibEntry::new("key1".to_string(), BibEntryType::Article));
+        bib.add_entry(BibEntry::new("key2".to_string(), BibEntryType::Article));
+        bib.cite("key1".to_string());
+        
+        assert_eq!(bib.entry_count(), 2);
+        assert_eq!(bib.cited_count(), 1);
+        
+        let removed = bib.remove_entry("key1");
+        assert!(removed);
+        
+        assert_eq!(bib.entry_count(), 1);
+        assert_eq!(bib.cited_count(), 0);
+        assert!(bib.get_entry("key1").is_none());
+    }
+
+    #[test]
+    fn test_remove_nonexistent_entry() {
+        let mut bib = Bibliography::new();
+        let removed = bib.remove_entry("key1");
+        assert!(!removed);
+    }
+
+    #[test]
+    fn test_parse_bibtex_performance() {
+        let mut bib = Bibliography::new();
+        let bibtex = "@article{key1, author = {John Doe}, title = {Test Title}, year = {2020}}";
+        let result = bib.parse_bibtex(bibtex);
+        assert!(result.is_ok());
+        assert_eq!(bib.entry_count(), 1);
     }
 }

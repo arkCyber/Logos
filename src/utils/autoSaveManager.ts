@@ -4,6 +4,7 @@
  */
 
 import { pathManager } from './pathManager';
+import { logger, LogCategory } from './logger';
 
 interface AutoSaveConfig {
   enabled: boolean;
@@ -31,7 +32,7 @@ class AutoSaveManager {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const autoSavePath = pathManager.getSystemPath('autosave');
     const autoSaveFilename = `${filename}_autosave_${timestamp}.json`;
-    const fullPath = pathManager.getFullPath(autoSavePath, autoSaveFilename);
+    const fullPath = pathManager.getFullPath(autoSavePath, autoSaveFilename); // eslint-disable-line @typescript-eslint/no-unused-vars
 
     // In a real implementation, this would use Tauri's file system API
     // For now, we'll store in localStorage as a fallback
@@ -44,10 +45,10 @@ class AutoSaveManager {
     try {
       localStorage.setItem(`autosave_${filename}`, JSON.stringify(autoSaveData));
       this.lastSaveTime = Date.now();
-      console.log(`Auto saved: ${filename} at ${new Date().toISOString()}`);
+      logger.debug('Auto saved', { filename, timestamp: new Date().toISOString() }, LogCategory.SYSTEM);
       return autoSaveFilename;
     } catch (error) {
-      console.error('Failed to auto save:', error);
+      logger.error('Failed to auto save', error, LogCategory.SYSTEM);
       throw error;
     }
   }
@@ -64,7 +65,7 @@ class AutoSaveManager {
       }
       return null;
     } catch (error) {
-      console.error('Failed to restore auto save:', error);
+      logger.error('Failed to restore auto save', error, LogCategory.SYSTEM);
       return null;
     }
   }
@@ -95,7 +96,7 @@ class AutoSaveManager {
       this.autoSaveIntervalId = window.setInterval(() => {
         callback();
       }, this.config.interval);
-      console.log(`Auto save enabled with interval: ${this.config.interval}ms`);
+      logger.debug('Auto save enabled', { interval: this.config.interval }, LogCategory.SYSTEM);
     }
   }
 
@@ -106,7 +107,7 @@ class AutoSaveManager {
     if (this.autoSaveIntervalId) {
       clearInterval(this.autoSaveIntervalId);
       this.autoSaveIntervalId = null;
-      console.log('Auto save disabled');
+      logger.debug('Auto save disabled', {}, LogCategory.SYSTEM);
     }
   }
 
@@ -129,7 +130,7 @@ class AutoSaveManager {
       }
     }
     keys.forEach(key => localStorage.removeItem(key));
-    console.log(`Cleared ${keys.length} auto saves`);
+    logger.debug('Cleared auto saves', { count: keys.length }, LogCategory.SYSTEM);
   }
 
   /**

@@ -156,10 +156,10 @@
 
 /* ==================== Ribbon Panels ==================== */
 .ribbon-panels {
-  min-height: 92px;
+  min-height: 70px;
   background: var(--word-ribbon-panel-bg);
   border-bottom: 1px solid var(--word-border);
-  padding: 4px 8px;
+  padding: 2px 8px;
   display: flex;
   gap: 8px;
   overflow-x: auto;
@@ -179,7 +179,7 @@
 .ribbon-group {
   display: flex;
   flex-direction: column;
-  padding: 0 8px;
+  padding: 2px 8px 1px 8px;
   border-right: 1px solid var(--word-divider);
   min-width: fit-content;
 }
@@ -189,21 +189,38 @@
 }
 
 .group-label {
-  font-size: var(--word-font-size-ribbon-group);
-  color: var(--word-text-secondary);
-  text-align: center;
-  margin-top: auto;
-  padding-top: 4px;
-  padding-bottom: 2px;
-  white-space: nowrap;
-  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--word-text-primary);
+  margin-top: 4px;
+  padding: 2px 4px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.group-label:hover {
+  color: var(--word-accent);
+}
+
+.group-label svg {
+  width: 12px;
+  height: 12px;
+  color: var(--word-text-primary);
+  transition: color 0.15s ease;
+}
+
+.group-label:hover svg {
+  color: var(--word-accent);
 }
 
 .group-content {
   display: flex;
   gap: 2px;
   align-items: flex-start;
-  padding: 4px 0;
+  padding: 0;
   flex-wrap: wrap;
 }
 
@@ -257,6 +274,7 @@
   width: 20px;
   height: 20px;
   flex-shrink: 0;
+  stroke-width: 1.5;
 }
 
 .ribbon-button span {
@@ -287,7 +305,7 @@
   transition: all 0.1s ease;
   font-family: var(--word-font-ui);
   font-size: var(--word-font-size-ribbon-button);
-  font-weight: var(--word-font-weight-medium);
+  font-weight: normal;
   user-select: none;
 }
 
@@ -306,6 +324,7 @@
   width: 32px;
   height: 32px;
   flex-shrink: 0;
+  stroke-width: 1.5;
 }
 
 .ribbon-button-large span {
@@ -350,6 +369,7 @@
 .ribbon-button.compact svg {
   width: 16px;
   height: 16px;
+  stroke-width: 2;
 }
 
 /* 样式按钮 (H1, H2, H3 等) */
@@ -380,7 +400,7 @@
 
 .ribbon-select.compact {
   width: auto;
-  min-width: 80px;
+  min-width: 60px;
 }
 
 .ribbon-select:hover {

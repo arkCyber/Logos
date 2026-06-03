@@ -11,8 +11,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::time::Instant;
-use crate::error_handling::{ErrorContext, ErrorSeverity};
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker};
 use crate::config_service::ExportConfigService;
 use std::sync::Arc;
 
@@ -58,7 +57,7 @@ pub enum CRDTOperation {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CRDTDocument {
     pub id: String,
     pub doc_type: CRDTType,
@@ -71,13 +70,18 @@ pub struct CRDTDocument {
     /// 配置服务
     #[serde(skip)]
     config_service: Arc<ExportConfigService>,
+    #[serde(skip)]
     operation_count: u64,
+    #[serde(skip)]
     last_error: Option<ErrorContext>,
+    #[serde(skip)]
+    circuit_breaker: CircuitBreaker,
 }
 
 impl CRDTDocument {
     pub fn new(id: String, doc_type: CRDTType, config_service: Arc<ExportConfigService>) -> Self {
         let now = Utc::now();
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             id,
             doc_type,
@@ -90,6 +94,7 @@ impl CRDTDocument {
             config_service,
             operation_count: 0,
             last_error: None,
+            circuit_breaker,
         }
     }
 
@@ -163,14 +168,26 @@ impl CRDTDocument {
     pub fn apply_operation(&mut self, operation: CRDTOperation) -> Result<(), String> {
         self.operation_count += 1;
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let error = "Circuit breaker is open, blocking CRDT operations".to_string();
+            self.record_error("CIRCUIT_BREAKER_OPEN", &error, "apply_operation");
+            return Err(error);
+        }
+
         // Validate operation
-        self.validate_operation(&operation)?;
+        if let Err(e) = self.validate_operation(&operation) {
+            self.record_error("INVALID_OPERATION", &e, "apply_operation");
+            self.circuit_breaker.record_failure();
+            return Err(e);
+        }
 
         // Check operation count limit
         let collaboration_config = self.config_service.get_collaboration_config();
         if self.operations.len() >= collaboration_config.max_operations {
             let error = format!("Operation count exceeds maximum of {}", collaboration_config.max_operations);
             self.record_error("TOO_MANY_OPERATIONS", &error, "apply_operation");
+            self.circuit_breaker.record_failure();
             return Err(error);
         }
 
@@ -184,11 +201,13 @@ impl CRDTDocument {
                 // Validate author ID
                 if let Err(e) = self.validate_author_id(author) {
                     self.record_error("INVALID_AUTHOR_ID", &e, "apply_operation");
+                    self.circuit_breaker.record_failure();
                     return Err(e);
                 }
                 // Validate operation content
                 if let Err(e) = self.validate_operation_content(content) {
                     self.record_error("INVALID_CONTENT", &e, "apply_operation");
+                    self.circuit_breaker.record_failure();
                     return Err(e);
                 }
                 // Validate resulting content length
@@ -196,11 +215,13 @@ impl CRDTDocument {
                 if self.content.len() + content.len() > collaboration_config.max_content_length {
                     let error = format!("Resulting content would exceed maximum length of {}", collaboration_config.max_content_length);
                     self.record_error("CONTENT_TOO_LONG", &error, "apply_operation");
+                    self.circuit_breaker.record_failure();
                     return Err(error);
                 }
                 if *position > self.content.len() {
                     let error = format!("Insert position {} out of bounds", position);
                     self.record_error("POSITION_OUT_OF_BOUNDS", &error, "apply_operation");
+                    self.circuit_breaker.record_failure();
                     return Err(error);
                 }
                 self.content.insert_str(*position, content);
@@ -228,6 +249,7 @@ impl CRDTDocument {
                 if end > self.content.len() {
                     let error = format!("Delete range {}-{} out of bounds", position, end);
                     self.record_error("RANGE_OUT_OF_BOUNDS", &error, "apply_operation");
+                    self.circuit_breaker.record_failure();
                     return Err(error);
                 }
                 self.content.replace_range(*position..end, "");
@@ -236,6 +258,7 @@ impl CRDTDocument {
                 if !self.authors.contains_key(author) && self.authors.len() >= collaboration_config.max_authors {
                     let error = format!("Author count exceeds maximum of {}", collaboration_config.max_authors);
                     self.record_error("TOO_MANY_AUTHORS", &error, "apply_operation");
+                    self.circuit_breaker.record_failure();
                     return Err(error);
                 }
                 self.authors.insert(author.clone(), author.clone());
@@ -249,12 +272,14 @@ impl CRDTDocument {
             } => {
                 if let Err(e) = self.validate_author_id(author) {
                     self.record_error("INVALID_AUTHOR_ID", &e, "apply_operation");
+                    self.circuit_breaker.record_failure();
                     return Err(e);
                 }
                 let end = *position + *length;
                 if end > self.content.len() {
                     let error = format!("Format range {}-{} out of bounds", position, end);
                     self.record_error("RANGE_OUT_OF_BOUNDS", &error, "apply_operation");
+                    self.circuit_breaker.record_failure();
                     return Err(error);
                 }
                 
@@ -262,6 +287,7 @@ impl CRDTDocument {
                 if !self.authors.contains_key(author) && self.authors.len() >= collaboration_config.max_authors {
                     let error = format!("Author count exceeds maximum of {}", collaboration_config.max_authors);
                     self.record_error("TOO_MANY_AUTHORS", &error, "apply_operation");
+                    self.circuit_breaker.record_failure();
                     return Err(error);
                 }
                 self.authors.insert(author.clone(), author.clone());
@@ -272,6 +298,7 @@ impl CRDTDocument {
         self.version += 1;
         self.updated_at = Utc::now();
         self.last_error = None;
+        self.circuit_breaker.record_success();
 
         Ok(())
     }

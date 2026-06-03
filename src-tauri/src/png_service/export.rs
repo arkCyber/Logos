@@ -9,8 +9,6 @@
 //! - Fault tolerance and error recovery
 
 use super::{PngConfig, PngRenderer};
-use super::config::PngFormat;
-use super::renderer::RenderQuality;
 use serde::{Deserialize, Serialize};
 use crate::error_handling::{ErrorContext, ErrorSeverity};
 use crate::config_service::ExportConfigService;
@@ -303,6 +301,8 @@ impl PngExporter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::renderer::RenderQuality;
+    use super::super::config::PngFormat;
 
     #[test]
     fn test_png_export_options_new() {

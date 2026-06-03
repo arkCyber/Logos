@@ -11,10 +11,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use crate::error_handling::{ErrorContext, ErrorSeverity};
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker};
 use crate::config_service::ExportConfigService;
 use std::sync::Arc;
-use calamine::{Reader, Xlsx, open_workbook};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -56,15 +55,18 @@ pub struct DataProcessor {
     config_service: Arc<ExportConfigService>,
     operation_count: u64,
     last_error: Option<ErrorContext>,
+    circuit_breaker: CircuitBreaker,
     // In production, this would use proper CSV/Excel parsing libraries
 }
 
 impl DataProcessor {
     pub fn new(config_service: Arc<ExportConfigService>) -> Self {
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             config_service,
             operation_count: 0,
             last_error: None,
+            circuit_breaker,
         }
     }
 
@@ -279,15 +281,24 @@ impl DataProcessor {
     ) -> Result<MergeBatchResult, String> {
         self.operation_count += 1;
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let error = "Circuit breaker is open, blocking mail merge operations".to_string();
+            self.record_error("CIRCUIT_BREAKER_OPEN", &error, "process_batch_merge");
+            return Err(error);
+        }
+
         // Validate batch size
         if let Err(e) = self.validate_batch_size(config.batch_size) {
             self.record_error("INVALID_BATCH_SIZE", &e, "process_batch_merge");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate record count
         if let Err(e) = self.validate_record_count(data.len()) {
             self.record_error("TOO_MANY_RECORDS", &e, "process_batch_merge");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
@@ -295,6 +306,7 @@ impl DataProcessor {
         for record in data {
             if let Err(e) = self.validate_record(record) {
                 self.record_error("INVALID_RECORD", &e, "process_batch_merge");
+                self.circuit_breaker.record_failure();
                 return Err(e);
             }
         }
@@ -336,6 +348,7 @@ impl DataProcessor {
                     } else {
                         failed += 1;
                         if !config.skip_errors {
+                            self.circuit_breaker.record_failure();
                             return Err(format!(
                                 "Merge failed for record {}: {}",
                                 i,
@@ -348,6 +361,7 @@ impl DataProcessor {
                 Err(e) => {
                     failed += 1;
                     if !config.skip_errors {
+                        self.circuit_breaker.record_failure();
                         return Err(format!("Merge error for record {}: {}", i, e));
                     }
                 }
@@ -355,6 +369,7 @@ impl DataProcessor {
         }
 
         self.last_error = None;
+        self.circuit_breaker.record_success();
         Ok(MergeBatchResult {
             total_records: data.len(),
             successful,

@@ -8,7 +8,7 @@
  * 4. 平滑滚动动画
  */
 
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { Editor } from '@tiptap/vue-3';
 import { logger, LogCategory } from '../utils/logger';
 
@@ -326,7 +326,7 @@ return;
       }, 1000);
       
       // 设置光标位置
-      const offset = (element as HTMLElement).offsetTop;
+      const _offset = (element as HTMLElement).offsetTop;
       editor.commands.focus();
     }
   };

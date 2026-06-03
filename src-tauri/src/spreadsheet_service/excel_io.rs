@@ -5,11 +5,10 @@
 
 use crate::spreadsheet_service::{
     error::{SpreadsheetError, SpreadsheetResult, ExcelOperation},
-    types::{Cell, CellReference, CellValue, Sheet, Workbook, SheetDimensions, SheetVisibility},
+    types::{Cell, CellReference, CellValue, Workbook},
 };
-use calamine::{Reader, Xlsx, open_workbook, DataType};
+use calamine::DataType;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Excel import options
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +70,7 @@ impl ExcelImporter {
     }
 
     /// Import Excel file from bytes
-    pub fn import_from_bytes(&self, data: &[u8]) -> SpreadsheetResult<Workbook> {
+    pub fn import_from_bytes(&self, _data: &[u8]) -> SpreadsheetResult<Workbook> {
         // Temporarily disabled - calamine's open_workbook requires a file path
         // TODO: Implement byte-based import using calamine's other methods
         Err(SpreadsheetError::excel_error(

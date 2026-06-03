@@ -3,7 +3,7 @@
  * 提供全面的性能监控、分析和优化功能
  */
 
-import { logger, LogCategory, LogLevel } from './logger';
+import { logger, LogCategory, LogLevel } from './logger'; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 /**
  * 性能指标接口
@@ -179,7 +179,10 @@ export class PerformanceMonitor {
             if (!this.networkRequests.has(url)) {
               this.networkRequests.set(url, []);
             }
-            this.networkRequests.get(url)!.push(duration);
+            const durations = this.networkRequests.get(url);
+            if (durations) {
+              durations.push(duration);
+            }
           }
         }
       });
@@ -332,11 +335,11 @@ export class PerformanceMonitor {
   private estimateCPUUsage(): number {
     // 这是一个简化的估算，实际应用中可能需要更精确的方法
     const start = performance.now();
-    let workCount = 0;
+    let _workCount = 0;
 
     // 执行一些计算工作来测量CPU性能
     for (let i = 0; i < 1000000; i++) {
-      workCount += Math.sqrt(i);
+      _workCount += Math.sqrt(i);
     }
 
     const end = performance.now();
@@ -601,12 +604,14 @@ return 0;
       this.customMetrics.set(name, []);
     }
 
-    this.customMetrics.get(name)!.push(value);
+    const values = this.customMetrics.get(name);
+    if (values) {
+      values.push(value);
 
-    // 限制历史数量
-    const values = this.customMetrics.get(name)!;
-    if (values.length > 100) {
-      values.shift();
+      // 限制历史数量
+      if (values.length > 100) {
+        values.shift();
+      }
     }
   }
 

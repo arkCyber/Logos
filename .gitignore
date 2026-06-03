@@ -15,6 +15,8 @@ dist-ssr
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
 .idea
 .DS_Store
 *.suo
@@ -27,3 +29,47 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Tauri specific
+src-tauri/target/
+src-tauri/Cargo.lock
+src-tauri/WixTools/
+
+# Test coverage
+coverage
+*.lcov
+.nyc_output
+
+# Playwright
+playwright-report
+test-results
+playwright/.cache
+
+# Build artifacts
+*.dmg
+*.app
+*.exe
+*.msi
+*.deb
+*.rpm
+*.AppImage
+
+# Cache
+.cache
+.vite
+.eslintcache
+.prettiercache
+.turbo
+
+# OS specific
+Thumbs.db
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+*.temp

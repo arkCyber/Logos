@@ -16,6 +16,12 @@ use std::time::Instant;
 use crate::error_handling::{ErrorContext, ErrorSeverity};
 use crate::config_service::ExportConfigService;
 
+/// Performance threshold for warning (in milliseconds)
+const PERFORMANCE_WARNING_THRESHOLD_MS: u128 = 2000;
+
+/// Performance threshold for critical warning (in milliseconds)
+const PERFORMANCE_CRITICAL_THRESHOLD_MS: u128 = 10000;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CloudProvider {
@@ -95,6 +101,14 @@ pub struct SyncManager {
 }
 
 impl SyncManager {
+    /// Creates a new sync manager instance
+    /// 
+    /// # Arguments
+    /// * `config` - The sync configuration
+    /// * `config_service` - The configuration service
+    /// 
+    /// # Returns
+    /// A new SyncManager instance
     pub fn new(config: SyncConfig, config_service: Arc<ExportConfigService>) -> Self {
         Self {
             config: Arc::new(Mutex::new(config)),
@@ -112,7 +126,32 @@ impl SyncManager {
         }
     }
 
+    /// Get the performance warning threshold
+    /// 
+    /// # Returns
+    /// The performance warning threshold in milliseconds
+    pub fn performance_warning_threshold_ms() -> u128 {
+        PERFORMANCE_WARNING_THRESHOLD_MS
+    }
+
+    /// Get the performance critical threshold
+    /// 
+    /// # Returns
+    /// The performance critical threshold in milliseconds
+    pub fn performance_critical_threshold_ms() -> u128 {
+        PERFORMANCE_CRITICAL_THRESHOLD_MS
+    }
+
     /// Validate file path
+    /// 
+    /// # Arguments
+    /// * `path` - The file path to validate
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Security
+    /// Prevents DoS attacks by limiting file path length
     fn validate_file_path(&self, path: &str) -> Result<(), String> {
         let cloud_config = self.config_service.get_cloud_config();
         if path.is_empty() {
@@ -125,6 +164,15 @@ impl SyncManager {
     }
 
     /// Validate file name
+    /// 
+    /// # Arguments
+    /// * `name` - The file name to validate
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Security
+    /// Prevents DoS attacks by limiting file name length
     fn validate_file_name(&self, name: &str) -> Result<(), String> {
         let cloud_config = self.config_service.get_cloud_config();
         if name.is_empty() {
@@ -137,6 +185,15 @@ impl SyncManager {
     }
 
     /// Validate file size
+    /// 
+    /// # Arguments
+    /// * `size` - The file size in bytes
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Security
+    /// Prevents memory exhaustion by limiting file size
     fn validate_file_size(&self, size: u64) -> Result<(), String> {
         let cloud_config = self.config_service.get_cloud_config();
         if size > cloud_config.max_file_size {
@@ -146,6 +203,15 @@ impl SyncManager {
     }
 
     /// Validate token length
+    /// 
+    /// # Arguments
+    /// * `token` - The optional token to validate
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Security
+    /// Prevents DoS attacks by limiting token length
     fn validate_token(&self, token: Option<&String>) -> Result<(), String> {
         let cloud_config = self.config_service.get_cloud_config();
         if let Some(t) = token {
@@ -181,7 +247,21 @@ impl SyncManager {
         self.last_error = None;
     }
 
+    /// Reset operation count
+    pub fn reset_operation_count(&mut self) {
+        self.operation_count = 0;
+    }
+
     /// Update sync configuration with validation
+    /// 
+    /// # Arguments
+    /// * `config` - The new sync configuration
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Security
+    /// Validates token lengths to prevent DoS attacks
     pub fn update_config(&mut self, config: SyncConfig) -> Result<(), String> {
         self.operation_count += 1;
 
@@ -225,7 +305,19 @@ impl SyncManager {
     }
 
     /// Start sync process
+    /// 
+    /// # Returns
+    /// Result containing the sync result or an error message
+    /// 
+    /// # Performance
+    /// Logs a warning if processing takes longer than PERFORMANCE_WARNING_THRESHOLD_MS
+    /// Logs a critical warning if processing takes longer than PERFORMANCE_CRITICAL_THRESHOLD_MS
+    /// 
+    /// # Security
+    /// Validates that only one sync operation can run at a time
     pub async fn sync(&self) -> Result<SyncResult, String> {
+        let start_time = Instant::now();
+        
         {
             let mut status = self
                 .status
@@ -260,6 +352,14 @@ impl SyncManager {
         status.is_syncing = false;
         status.last_sync = Some(Utc::now());
         status.last_sync_success = result.is_ok();
+
+        // Performance monitoring
+        let elapsed = start_time.elapsed();
+        if elapsed.as_millis() > PERFORMANCE_CRITICAL_THRESHOLD_MS {
+            eprintln!("Cloud sync CRITICAL performance warning: took {}ms", elapsed.as_millis());
+        } else if elapsed.as_millis() > PERFORMANCE_WARNING_THRESHOLD_MS {
+            eprintln!("Cloud sync performance warning: took {}ms", elapsed.as_millis());
+        }
 
         result
     }
@@ -1236,6 +1336,23 @@ mod tests {
         
         manager.reset_error_state();
         assert!(manager.get_last_error().is_none());
+    }
+
+    #[test]
+    fn test_performance_threshold_getters() {
+        assert_eq!(SyncManager::performance_warning_threshold_ms(), PERFORMANCE_WARNING_THRESHOLD_MS);
+        assert_eq!(SyncManager::performance_critical_threshold_ms(), PERFORMANCE_CRITICAL_THRESHOLD_MS);
+    }
+
+    #[test]
+    fn test_reset_operation_count() {
+        let config = SyncConfig::default();
+        let mut manager = SyncManager::new(config, Arc::new(ExportConfigService::new()));
+        manager.operation_count = 5;
+        assert_eq!(manager.get_operation_count(), 5);
+        
+        manager.reset_operation_count();
+        assert_eq!(manager.get_operation_count(), 0);
     }
 
     #[test]

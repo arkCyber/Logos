@@ -27,6 +27,7 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
 bytes = "1"
 regex = "1"
+scraper = "0.20"
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 md5 = "0.7"

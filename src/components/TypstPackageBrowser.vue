@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { ref, computed, onMounted, watch } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { invoke } from '@tauri-apps/api/core'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { logger, LogCategory } from '../utils/logger';
 import { debounce } from '../utils/debounce';
 import { auditLogger, AuditAction } from '../utils/auditLogger';
@@ -123,7 +123,7 @@ function setupKeyboardShortcuts() {
 }
 
 // 防抖搜索
-const debouncedSearch = debounce((query: string) => {
+const debouncedSearch = debounce((query: string) => { // eslint-disable-line @typescript-eslint/no-unused-vars
   searchQuery.value = query;
 }, 300);
 
@@ -161,7 +161,7 @@ function escapeHtml(text: string): string {
 }
 
 // 验证URL
-function isValidUrl(url: string): boolean {
+function _isValidUrl(url: string): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars
   try {
     new URL(url);
     return true;

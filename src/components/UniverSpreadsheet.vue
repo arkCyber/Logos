@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 
-const emit = defineEmits<{
+const emit = defineEmits<{ // eslint-disable-line @typescript-eslint/no-unused-vars
   insertContent: [code: string];
 }>();
 
-const isLoading = ref(false);
+const isLoading = ref(false); // eslint-disable-line @typescript-eslint/no-unused-vars
 
 // Univer集成需要进一步调试API类型
 // 暂时显示占位符信息

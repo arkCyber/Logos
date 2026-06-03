@@ -29,9 +29,9 @@ mod tests {
     #[test]
     fn test_ai_client_creation() {
         let config = AiConfig::new("test_key".to_string());
-        let _client = AiClient::new(config, Arc::new(ExportConfigService::new()));
+        let client = AiClient::new(config, Arc::new(ExportConfigService::new()));
         // Client should be created without panicking
-        assert!(true);
+        assert!(client.is_ok());
     }
 
     #[test]

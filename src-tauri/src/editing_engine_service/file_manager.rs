@@ -1,9 +1,50 @@
 use std::path::Path;
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker};
+use crate::config_service::ExportConfigService;
+use std::sync::Arc;
 
-pub struct FileManager;
+pub struct FileManager {
+    config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
+}
 
 impl FileManager {
+    pub fn new() -> Self {
+        let config_service = Arc::new(ExportConfigService::new());
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
+        Self {
+            config_service,
+            circuit_breaker,
+        }
+    }
+
     pub fn save_file(file_path: &str, content: &str) -> Result<(), String> {
+        Self::new().save_file_impl(file_path, content)
+    }
+
+    fn save_file_impl(&self, file_path: &str, content: &str) -> Result<(), String> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "CIRCUIT_BREAKER_OPEN",
+                "Circuit breaker is open, blocking file operations",
+                "file_manager",
+            );
+            return Err(context.message);
+        }
+
+        if file_path.is_empty() {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "EMPTY_FILE_PATH",
+                "File path cannot be empty",
+                "file_manager",
+            );
+            self.circuit_breaker.record_failure();
+            return Err(context.message);
+        }
+
         eprintln!(
             "[File Manager] Saving file: {} ({} bytes)",
             file_path,
@@ -15,65 +56,172 @@ impl FileManager {
         if let Some(parent) = path.parent() {
             if !parent.exists() {
                 std::fs::create_dir_all(parent).map_err(|e| {
-                    eprintln!("[File Manager] Failed to create directory: {}", e);
-                    format!("Failed to create directory: {}", e)
+                    let context = ErrorContext::new(
+                        ErrorSeverity::Error,
+                        "DIRECTORY_CREATE_FAILED",
+                        &format!("Failed to create directory: {}", e),
+                        "file_manager",
+                    );
+                    eprintln!("[File Manager] Error: {}", context.message);
+                    self.circuit_breaker.record_failure();
+                    context.message
                 })?;
             }
         }
 
         std::fs::write(path, content).map_err(|e| {
-            eprintln!("[File Manager] Failed to write file: {}", e);
-            format!("Failed to write file: {}", e)
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "FILE_WRITE_FAILED",
+                &format!("Failed to write file: {}", e),
+                "file_manager",
+            );
+            eprintln!("[File Manager] Error: {}", context.message);
+            self.circuit_breaker.record_failure();
+            context.message
         })?;
         eprintln!("[File Manager] File saved successfully");
+        self.circuit_breaker.record_success();
         Ok(())
     }
 
     pub fn load_file(file_path: &str) -> Result<String, String> {
+        Self::new().load_file_impl(file_path)
+    }
+
+    fn load_file_impl(&self, file_path: &str) -> Result<String, String> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "CIRCUIT_BREAKER_OPEN",
+                "Circuit breaker is open, blocking file operations",
+                "file_manager",
+            );
+            return Err(context.message);
+        }
+
+        if file_path.is_empty() {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "EMPTY_FILE_PATH",
+                "File path cannot be empty",
+                "file_manager",
+            );
+            self.circuit_breaker.record_failure();
+            return Err(context.message);
+        }
+
         eprintln!("[File Manager] Loading file: {}", file_path);
         let path = Path::new(file_path);
 
         if !path.exists() {
-            eprintln!("[File Manager] File does not exist: {}", file_path);
-            return Err(format!("File does not exist: {}", file_path));
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "FILE_NOT_FOUND",
+                &format!("File does not exist: {}", file_path),
+                "file_manager",
+            );
+            eprintln!("[File Manager] Error: {}", context.message);
+            self.circuit_breaker.record_failure();
+            return Err(context.message);
         }
 
         let content = std::fs::read_to_string(path).map_err(|e| {
-            eprintln!("[File Manager] Failed to read file: {}", e);
-            format!("Failed to read file: {}", e)
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "FILE_READ_FAILED",
+                &format!("Failed to read file: {}", e),
+                "file_manager",
+            );
+            eprintln!("[File Manager] Error: {}", context.message);
+            self.circuit_breaker.record_failure();
+            context.message
         })?;
         eprintln!(
             "[File Manager] File loaded successfully ({} bytes)",
             content.len()
         );
+        self.circuit_breaker.record_success();
         Ok(content)
     }
 
     #[allow(dead_code)]
     pub fn file_exists(file_path: &str) -> bool {
+        if file_path.is_empty() {
+            return false;
+        }
         Path::new(file_path).exists()
     }
 
     #[allow(dead_code)]
     pub fn get_file_size(file_path: &str) -> Result<u64, String> {
+        if file_path.is_empty() {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "EMPTY_FILE_PATH",
+                "File path cannot be empty",
+                "file_manager",
+            );
+            return Err(context.message);
+        }
+
         let path = Path::new(file_path);
         if !path.exists() {
-            return Err(format!("File does not exist: {}", file_path));
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "FILE_NOT_FOUND",
+                &format!("File does not exist: {}", file_path),
+                "file_manager",
+            );
+            return Err(context.message);
         }
 
         path.metadata()
             .map(|m| m.len())
-            .map_err(|e| format!("Failed to get file metadata: {}", e))
+            .map_err(|e| {
+                let context = ErrorContext::new(
+                    ErrorSeverity::Error,
+                    "METADATA_READ_FAILED",
+                    &format!("Failed to get file metadata: {}", e),
+                    "file_manager",
+                );
+                context.message
+            })
     }
 
     #[allow(dead_code)]
     pub fn delete_file(file_path: &str) -> Result<(), String> {
-        let path = Path::new(file_path);
-        if !path.exists() {
-            return Err(format!("File does not exist: {}", file_path));
+        if file_path.is_empty() {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "EMPTY_FILE_PATH",
+                "File path cannot be empty",
+                "file_manager",
+            );
+            return Err(context.message);
         }
 
-        std::fs::remove_file(path).map_err(|e| format!("Failed to delete file: {}", e))
+        let path = Path::new(file_path);
+        if !path.exists() {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "FILE_NOT_FOUND",
+                &format!("File does not exist: {}", file_path),
+                "file_manager",
+            );
+            return Err(context.message);
+        }
+
+        std::fs::remove_file(path).map_err(|e| {
+            let context = ErrorContext::new(
+                ErrorSeverity::Error,
+                "FILE_DELETE_FAILED",
+                &format!("Failed to delete file: {}", e),
+                "file_manager",
+            );
+            context.message
+        })
     }
 }
 

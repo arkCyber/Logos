@@ -2,6 +2,9 @@ use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::error_handling::CircuitBreaker;
+use crate::config_service::ExportConfigService;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropboxConfig {
@@ -59,14 +62,17 @@ struct DropboxSharedLinkResponse {
 pub struct DropboxClient {
     config: DropboxConfig,
     http_client: Client,
+    circuit_breaker: CircuitBreaker,
 }
 
 #[allow(dead_code)]
 impl DropboxClient {
-    pub fn new(config: DropboxConfig) -> Self {
+    pub fn new(config: DropboxConfig, config_service: Arc<ExportConfigService>) -> Self {
+        let circuit_breaker = CircuitBreaker::new(config_service);
         Self {
             config,
             http_client: Client::new(),
+            circuit_breaker,
         }
     }
 
@@ -78,6 +84,11 @@ impl DropboxClient {
         args.insert("path", serde_json::json!(file_path));
         args.insert("mode", serde_json::json!("add"));
         args.insert("autorename", serde_json::json!(true));
+
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err("Circuit breaker is open, blocking Dropbox API calls".to_string());
+        }
 
         let response = self
             .http_client
@@ -94,16 +105,25 @@ impl DropboxClient {
             .body(content)
             .send()
             .await
-            .map_err(|e| format!("Upload request failed: {}", e))?;
+            .map_err(|e| {
+                self.circuit_breaker.record_failure();
+                format!("Upload request failed: {}", e)
+            })?;
 
         if !response.status().is_success() {
+            self.circuit_breaker.record_failure();
             return Err(format!("Upload failed with status: {}", response.status()));
         }
+
+        self.circuit_breaker.record_success();
 
         let metadata: DropboxMetadataResponse = response
             .json()
             .await
-            .map_err(|e| format!("Failed to parse response: {}", e))?;
+            .map_err(|e| {
+                self.circuit_breaker.record_failure();
+                format!("Failed to parse response: {}", e)
+            })?;
 
         Ok(metadata.id)
     }

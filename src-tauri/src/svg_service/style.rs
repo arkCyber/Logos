@@ -1,3 +1,9 @@
+/*!
+ * Aerospace-Grade SVG Style Model
+ *
+ * Fill, stroke, and font presentation attributes for SVG elements.
+ */
+
 use serde::{Deserialize, Serialize};
 
 /// SVG 填充
@@ -5,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub struct SvgFill {
     /// 填充颜色（RGB，可选）
     pub color: Option<(u8, u8, u8)>,
+    /// 渐变引用（例如 `grad1` -> `url(#grad1)`）
+    pub gradient_ref: Option<String>,
     /// 填充不透明度（0.0 - 1.0）
     pub opacity: f64,
 }
@@ -14,6 +22,7 @@ impl SvgFill {
     pub fn new() -> Self {
         Self {
             color: None,
+            gradient_ref: None,
             opacity: 1.0,
         }
     }
@@ -22,6 +31,13 @@ impl SvgFill {
     #[allow(dead_code)]
     pub fn with_color(mut self, r: u8, g: u8, b: u8) -> Self {
         self.color = Some((r, g, b));
+        self
+    }
+
+    /// 设置渐变引用 ID
+    #[allow(dead_code)]
+    pub fn with_gradient_ref(mut self, gradient_ref: String) -> Self {
+        self.gradient_ref = Some(gradient_ref);
         self
     }
 
@@ -37,6 +53,7 @@ impl SvgFill {
     pub fn none() -> Self {
         Self {
             color: None,
+            gradient_ref: None,
             opacity: 0.0,
         }
     }
@@ -148,6 +165,13 @@ impl SvgFont {
     #[allow(dead_code)]
     pub fn with_weight(mut self, weight: String) -> Self {
         self.weight = weight;
+        self
+    }
+
+    /// 设置字体样式（normal / italic / oblique）
+    #[allow(dead_code)]
+    pub fn with_style(mut self, style: String) -> Self {
+        self.style = style;
         self
     }
 }
@@ -317,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_svg_style_deserialization() {
-        let json = r#"{"fill":{"color":null,"opacity":1.0},"stroke":{"color":null,"width":1.0,"opacity":1.0},"font":null}"#;
+        let json = r#"{"fill":{"color":null,"gradient_ref":null,"opacity":1.0},"stroke":{"color":null,"width":1.0,"opacity":1.0},"font":null}"#;
         let style: SvgStyle = serde_json::from_str(json).unwrap();
         assert_eq!(style.stroke.width, 1.0);
     }

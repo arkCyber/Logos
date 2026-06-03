@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { useEditor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { FontFamily } from '@tiptap/extension-font-family';
-import { Underline } from '@tiptap/extension-underline';
-import { Strike } from '@tiptap/extension-strike';
+import { Underline } from '@tiptap/extension-underline'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { Strike } from '@tiptap/extension-strike'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { Subscript } from '@tiptap/extension-subscript';
 import { Superscript } from '@tiptap/extension-superscript';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
-import { invoke } from '@tauri-apps/api/core';
 import { logger, LogCategory } from '../utils/logger';
 import { htmlToTypst } from '../utils/translator';
+import {
+  createSvgObjectUrl,
+  isTauriEnvironment,
+  previewTypstSvgFromHtml,
+} from '../services/svgExportApi';
 import { useStateSync } from '../composables/useStateSync';
 import { useDataSync } from '../composables/useDataSync';
 import { useVisualSync } from '../composables/useVisualSync';
@@ -37,13 +41,8 @@ import {
   Redo, 
   Play, 
   Loader2, 
-  ZoomIn, 
-  ZoomOut, 
-  RotateCw, 
-  RotateCcw, 
-  Maximize2, 
-  Minimize2 
-} from 'lucide-vue-next';
+  RotateCw
+} from 'lucide-vue-next'; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 interface DualPaneEditorProps {
   modelValue?: string;
@@ -68,8 +67,8 @@ const emit = defineEmits<{
 
 // PDF预览状态
 const pdfData = ref<string | null>(null);
-const pdfScale = ref(1.0);
-const pdfRotation = ref(0);
+const pdfScale = ref(1.0); // eslint-disable-line @typescript-eslint/no-unused-vars
+const pdfRotation = ref(0); // eslint-disable-line @typescript-eslint/no-unused-vars
 const currentPage = ref(1);
 const totalPages = ref(1);
 
@@ -101,8 +100,8 @@ const editor = useEditor({
       handleEditorUpdate();
     }
   },
-  onCreate: ({ editor }) => {
-    console.log('[DualPaneEditor] Editor created successfully');
+  onCreate: ({ editor: _editor }) => {
+    logger.debug('Editor created successfully', {}, LogCategory.SYSTEM);
   },
   editorProps: {
     attributes: {
@@ -114,11 +113,11 @@ const editor = useEditor({
 // 集成状态纽带（useStateSync）
 const {
   editorState,
-  ribbonButtons,
+  ribbonButtons: _ribbonButtons,
   contextMenuItems,
   showContextMenu,
   contextMenuPosition,
-  handleContextMenu,
+  handleContextMenu: _handleContextMenu,
   hideContextMenu,
   executeContextMenuItem
 } = useStateSync(editor.value || null);
@@ -128,8 +127,8 @@ const {
   compileState,
   scheduleCompile,
   manualCompile,
-  getPdfUrl,
-  downloadPdf
+  getPdfUrl: _getPdfUrl,
+  downloadPdf: _downloadPdf
 } = useDataSync(editor.value || null, {
   debounceDelay: props.compileDelay,
   autoCompile: props.autoCompile,
@@ -140,10 +139,10 @@ const {
 
 // 集成视觉纽带（useVisualSync）
 const {
-  syncState,
-  elementMap,
-  syncEditorToPdf,
-  syncPdfToEditor,
+  syncState: _syncState,
+  elementMap: _elementMap,
+  syncEditorToPdf: _syncEditorToPdf,
+  syncPdfToEditor: _syncPdfToEditor,
   updateElementMap,
   enableSync,
   disableSync
@@ -184,7 +183,7 @@ watch(() => compileState.value.compileError, (error) => {
   }
 });
 
-// 编译Typst（调用后端服务）
+// 编译Typst（调用后端服务，使用SVG格式实现实时预览）
 const compileTypst = async () => {
   if (!editor.value) {
     return;
@@ -197,23 +196,25 @@ const compileTypst = async () => {
   }
 
   try {
-    logger.info('Compiling HTML to Typst', { contentLength: html.length }, LogCategory.BUSINESS);
-    
-    // 转换HTML为Typst
-    const typstCode = htmlToTypst(html);
-    
+    logger.info('Compiling HTML to Typst SVG preview', { contentLength: html.length }, LogCategory.BUSINESS);
+
     // 检查是否在Tauri环境中
-    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-      // 调用后端编译服务
-      const pdfBase64 = await invoke<string>('compile_typst', { code: typstCode });
-      logger.info('Typst compilation completed', { typstLength: typstCode.length }, LogCategory.BUSINESS);
-      pdfData.value = pdfBase64;
+    if (typeof window !== 'undefined' && isTauriEnvironment()) {
+      const result = await previewTypstSvgFromHtml(html, htmlToTypst, 0);
+
+      if (result.success && result.text) {
+        pdfData.value = createSvgObjectUrl(result.text);
+        logger.info('Typst SVG compilation completed', { typstLength: html.length }, LogCategory.BUSINESS);
+      } else {
+        logger.error('SVG rendering failed', result.error, LogCategory.BUSINESS);
+        pdfData.value = null;
+      }
     } else {
       // 非Tauri环境，使用模拟数据
-      logger.warn('Not in Tauri environment, using mock PDF data', LogCategory.BUSINESS);
-      const mockPdf = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // PDF magic number
-      const blob = new Blob([mockPdf], { type: 'application/pdf' });
-      pdfData.value = URL.createObjectURL(blob);
+      logger.warn('Not in Tauri environment, using mock SVG data', LogCategory.BUSINESS);
+      const mockSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="#f5f5f5"/><text x="50%" y="50%" text-anchor="middle" fill="#666">Mock SVG Preview</text></svg>';
+      const svgBlob = new Blob([mockSvg], { type: 'image/svg+xml' });
+      pdfData.value = URL.createObjectURL(svgBlob);
     }
   } catch (error) {
     logger.error('Failed to compile Typst', error, LogCategory.BUSINESS);
@@ -261,23 +262,23 @@ const redo = () => editor.value?.chain().focus().redo().run();
 // PDF控制（暂时禁用）
 // const pdfViewerRef = ref<InstanceType<typeof PdfViewer> | null>(null);
 
-const zoomIn = () => { /* pdfViewerRef.value?.zoomIn(); */ };
-const zoomOut = () => { /* pdfViewerRef.value?.zoomOut(); */ };
-const rotateClockwise = () => { /* pdfViewerRef.value?.rotateClockwise(); */ };
-const rotateCounterClockwise = () => { /* pdfViewerRef.value?.rotateCounterClockwise(); */ };
-const fitToWidth = () => { /* pdfViewerRef.value?.setScale(1.0); */ };
-const fitToPage = () => { /* pdfViewerRef.value?.setScale(1.0); */ };
+const zoomIn = () => { /* pdfViewerRef.value?.zoomIn(); */ }; // eslint-disable-line @typescript-eslint/no-unused-vars
+const zoomOut = () => { /* pdfViewerRef.value?.zoomOut(); */ }; // eslint-disable-line @typescript-eslint/no-unused-vars
+const rotateClockwise = () => { /* pdfViewerRef.value?.rotateClockwise(); */ }; // eslint-disable-line @typescript-eslint/no-unused-vars
+const rotateCounterClockwise = () => { /* pdfViewerRef.value?.rotateCounterClockwise(); */ }; // eslint-disable-line @typescript-eslint/no-unused-vars
+const fitToWidth = () => { /* pdfViewerRef.value?.setScale(1.0); */ }; // eslint-disable-line @typescript-eslint/no-unused-vars
+const fitToPage = () => { /* pdfViewerRef.value?.setScale(1.0); */ }; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 // 处理PDF元素点击（暂时禁用）
-const handlePdfElementClicked = (elementId: string, position: { page: number; x: number; y: number }) => {
-  logger.debug('PDF element clicked', { elementId, position }, LogCategory.UI);
+const handlePdfElementClicked = (_elementId: string, _position: { page: number; x: number; y: number }) => { // eslint-disable-line @typescript-eslint/no-unused-vars
+  logger.debug('PDF element clicked', { elementId: _elementId, position: _position }, LogCategory.UI);
   // syncPdfToEditor(elementId);
 };
 
 // 处理PDF页面变化（暂时禁用）
-const handlePdfPageChanged = (pageNumber: number, total: number) => {
-  currentPage.value = pageNumber;
-  totalPages.value = total;
+const handlePdfPageChanged = (_pageNumber: number, _total: number) => { // eslint-disable-line @typescript-eslint/no-unused-vars
+  currentPage.value = _pageNumber;
+  totalPages.value = _total;
 };
 
 // 生命周期
@@ -509,38 +510,29 @@ defineExpose({
       </div>
     </div>
     
-    <!-- 右侧：PDF预览 -->
-    <div class="preview-pane" v-if="false">
+    <!-- 右侧：SVG预览 -->
+    <div class="preview-pane">
       <div class="pane-header">
-        <h3>PDF 预览</h3>
+        <h3>SVG 预览</h3>
         <div class="header-actions">
-          <button class="btn-icon" title="缩小" @click="zoomOut">
-            <ZoomOut :size="16" />
-          </button>
-          <span class="zoom-level">{{ Math.round(pdfScale * 100) }}%</span>
-          <button class="btn-icon" title="放大" @click="zoomIn">
-            <ZoomIn :size="16" />
-          </button>
-          <button class="btn-icon" title="适应宽度" @click="fitToWidth">
-            <Maximize2 :size="16" />
-          </button>
-          <button class="btn-icon" title="适应页面" @click="fitToPage">
-            <Minimize2 :size="16" />
-          </button>
-          <button class="btn-icon" title="逆时针旋转" @click="rotateCounterClockwise">
-            <RotateCcw :size="16" />
-          </button>
-          <button class="btn-icon" title="顺时针旋转" @click="rotateClockwise">
-            <RotateCw :size="16" />
+          <button class="btn-icon" :disabled="compileState.isCompiling" title="刷新" @click="triggerManualCompile">
+            <Loader2 v-if="compileState.isCompiling" :size="16" class="spin" />
+            <RotateCw v-else :size="16" />
           </button>
         </div>
       </div>
       
-      <!-- PDF预览内容 -->
+      <!-- SVG预览内容 -->
       <div ref="pdfContainerRef" class="preview-content">
-        <!-- PDF预览暂时禁用 -->
-        <div class="empty-state">
-          <p>PDF预览功能暂时禁用（PDF.js worker配置问题）</p>
+        <div v-if="compileState.isCompiling" class="loading">
+          <div class="spinner"></div>
+          <span>编译中...</span>
+        </div>
+        <div v-else-if="!pdfData" class="empty-state">
+          <p>在编辑器中输入内容以生成Typst预览</p>
+        </div>
+        <div v-else class="svg-preview-wrapper">
+          <img :src="pdfData" alt="Typst SVG Preview" class="svg-preview-image" />
         </div>
       </div>
     </div>
@@ -771,6 +763,24 @@ defineExpose({
   display: flex;
   align-items: stretch;
   justify-content: stretch;
+}
+
+.svg-preview-wrapper {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.svg-preview-image {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  background: white;
 }
 
 .error-panel {

@@ -89,7 +89,7 @@ pub use compiler::{CompileOptions, TypstCompiler};
 pub use counter::{CounterKey, CounterSystem, CounterValue, NumberingStyle};
 pub use data_loader::{DataLoader, DataType};
 pub use equation::{Equation, EquationAlign, EquationBuilder, EquationConfig};
-pub use export::{HtmlExporter, SvgExporter};
+pub use export::{HtmlExporter, TypstSvgExporter, TypstSvgExportConfig, SvgExporter, SvgConfig};
 pub use figure::{Figure, FigureBuilder, FigureConfig, FigureKind, FigurePlacement};
 pub use fonts::{
     Font, FontBuilder, FontConfig, FontFamily, FontStyle as FontStyleType,
@@ -336,7 +336,7 @@ pub async fn render_typst(
             Ok(base64_output)
         }
         TypstOutputFormat::Svg => {
-            let svg_string = export::SvgExporter::new().export(&document)?;
+            let svg_string = export::TypstSvgExporter::new().export(&document)?;
             if let Err(e) = validate_output_size(svg_string.len(), &config_service) {
                 record_error("OUTPUT_TOO_LARGE", &e, "render_typst");
                 return Err(e);

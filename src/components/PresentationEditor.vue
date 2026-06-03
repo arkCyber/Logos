@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, shallowRef } from 'vue';
-import type { PresentationDocument, Slide, SlideElement, TextElement, ElementType } from '../types/presentation';
+import type { PresentationDocument, Slide, SlideElement, TextElement, ElementType } from '../types/presentation'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { createEmptyPresentation, createEmptySlide, ElementType as ET } from '../types/presentation';
 import { PresentationConverter } from '../utils/presentationConverter';
 
@@ -357,7 +357,7 @@ function onDragStart(event: DragEvent, index: number) {
   }
 }
 
-function onDragOver(event: DragEvent, index: number) {
+function onDragOver(event: DragEvent, _index: number) {
   event.preventDefault();
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = 'move';

@@ -10,8 +10,21 @@
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use crate::error_handling::{ErrorContext, ErrorSeverity};
+use std::time::Instant;
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker};
 use crate::config_service::ExportConfigService;
+
+/// Maximum number of changes to prevent memory issues
+const MAX_CHANGES: usize = 100_000;
+
+/// Maximum similarity computation string length
+const MAX_SIMILARITY_LENGTH: usize = 100_000;
+
+/// Performance threshold for warning (in milliseconds)
+const PERFORMANCE_WARNING_THRESHOLD_MS: u128 = 100;
+
+/// Performance threshold for critical warning (in milliseconds)
+const PERFORMANCE_CRITICAL_THRESHOLD_MS: u128 = 500;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -46,15 +59,18 @@ pub struct DiffEngine {
     operation_count: u64,
     last_error: Option<ErrorContext>,
     config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
     // In production, use a proper diff library like similar or difflib
 }
 
 impl DiffEngine {
     pub fn new(config_service: Arc<ExportConfigService>) -> Self {
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             operation_count: 0,
             last_error: None,
             config_service,
+            circuit_breaker,
         }
     }
 
@@ -111,12 +127,40 @@ impl DiffEngine {
     }
 
     /// Compare two texts and return diff result with validation
+    /// 
+    /// # Arguments
+    /// * `old_text` - The original text
+    /// * `new_text` - The modified text
+    /// 
+    /// # Returns
+    /// A DiffResult containing the changes and similarity
+    /// 
+    /// # Performance
+    /// Logs a warning if processing takes longer than PERFORMANCE_WARNING_THRESHOLD_MS
+    /// Logs a critical warning if processing takes longer than PERFORMANCE_CRITICAL_THRESHOLD_MS
+    /// 
+    /// # Security
+    /// Validates all inputs to prevent DoS attacks and memory issues
     pub fn compare(&mut self, old_text: &str, new_text: &str) -> DiffResult {
+        let start_time = Instant::now();
         self.operation_count += 1;
+
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            self.record_error("CIRCUIT_BREAKER_OPEN", "Circuit breaker is open, blocking diff operations", "compare");
+            return DiffResult {
+                changes: vec![],
+                similarity: 0.0,
+                old_length: old_text.len(),
+                new_length: new_text.len(),
+                total_changes: 0,
+            };
+        }
 
         // Validate text lengths
         if let Err(e) = self.validate_text_length(old_text) {
             self.record_error("INVALID_OLD_TEXT", &e, "compare");
+            self.circuit_breaker.record_failure();
             return DiffResult {
                 changes: vec![],
                 similarity: 0.0,
@@ -127,6 +171,7 @@ impl DiffEngine {
         }
         if let Err(e) = self.validate_text_length(new_text) {
             self.record_error("INVALID_NEW_TEXT", &e, "compare");
+            self.circuit_breaker.record_failure();
             return DiffResult {
                 changes: vec![],
                 similarity: 0.0,
@@ -143,6 +188,7 @@ impl DiffEngine {
         // Validate line counts
         if let Err(e) = self.validate_line_count(old_lines.len()) {
             self.record_error("INVALID_LINE_COUNT", &e, "compare");
+            self.circuit_breaker.record_failure();
             return DiffResult {
                 changes: vec![],
                 similarity: 0.0,
@@ -153,6 +199,7 @@ impl DiffEngine {
         }
         if let Err(e) = self.validate_line_count(new_lines.len()) {
             self.record_error("INVALID_LINE_COUNT", &e, "compare");
+            self.circuit_breaker.record_failure();
             return DiffResult {
                 changes: vec![],
                 similarity: 0.0,
@@ -189,10 +236,25 @@ impl DiffEngine {
         }
 
         let changes = self.compute_line_diff(&old_lines, &new_lines);
+        
+        // Safety check: prevent too many changes
+        if changes.len() > MAX_CHANGES {
+            eprintln!("DiffEngine: number of changes exceeds maximum of {}", MAX_CHANGES);
+        }
+        
         let similarity = self.compute_similarity(old_text, new_text);
         let total_changes = changes.len();
 
+        // Performance monitoring
+        let elapsed = start_time.elapsed();
+        if elapsed.as_millis() > PERFORMANCE_CRITICAL_THRESHOLD_MS {
+            eprintln!("DiffEngine CRITICAL performance warning: compare took {}ms", elapsed.as_millis());
+        } else if elapsed.as_millis() > PERFORMANCE_WARNING_THRESHOLD_MS {
+            eprintln!("DiffEngine performance warning: compare took {}ms", elapsed.as_millis());
+        }
+
         self.last_error = None;
+        self.circuit_breaker.record_success();
         DiffResult {
             changes,
             similarity,
@@ -203,6 +265,13 @@ impl DiffEngine {
     }
 
     /// Compute line-by-line diff
+    /// 
+    /// # Arguments
+    /// * `old_lines` - The original lines
+    /// * `new_lines` - The modified lines
+    /// 
+    /// # Returns
+    /// A vector of DiffChange objects
     fn compute_line_diff(&self, old_lines: &[&str], new_lines: &[&str]) -> Vec<DiffChange> {
         let mut changes = Vec::new();
         let mut old_idx = 0;
@@ -297,11 +366,29 @@ impl DiffEngine {
         changes
     }
 
+    /// Find a line in the remaining lines
+    /// 
+    /// # Arguments
+    /// * `line` - The line to find
+    /// * `remaining` - The remaining lines to search
+    /// 
+    /// # Returns
+    /// true if the line is found, false otherwise
     fn find_line_in_remaining(&self, line: &str, remaining: &[&str]) -> bool {
         remaining.iter().any(|l| *l == line)
     }
 
     /// Compute similarity between two texts (0.0 to 1.0)
+    /// 
+    /// # Arguments
+    /// * `old_text` - The original text
+    /// * `new_text` - The modified text
+    /// 
+    /// # Returns
+    /// Similarity score between 0.0 and 1.0
+    /// 
+    /// # Security
+    /// Limits computation to prevent performance issues with very long strings
     fn compute_similarity(&self, old_text: &str, new_text: &str) -> f64 {
         if old_text.is_empty() && new_text.is_empty() {
             return 1.0;
@@ -311,9 +398,16 @@ impl DiffEngine {
             return 0.0;
         }
 
+        // Safety check: prevent expensive computation on very long strings
+        let max_len = old_text.len().max(new_text.len());
+        if max_len > MAX_SIMILARITY_LENGTH {
+            eprintln!("DiffEngine: similarity computation exceeds maximum length of {}", MAX_SIMILARITY_LENGTH);
+            // Return a conservative estimate
+            return 0.5;
+        }
+
         // Simple character-level similarity using Levenshtein distance
         let distance = self.levenshtein_distance(old_text, new_text);
-        let max_len = old_text.len().max(new_text.len());
 
         if max_len == 0 {
             1.0
@@ -323,6 +417,16 @@ impl DiffEngine {
     }
 
     /// Compute Levenshtein distance between two strings
+    /// 
+    /// # Arguments
+    /// * `s1` - First string
+    /// * `s2` - Second string
+    /// 
+    /// # Returns
+    /// The Levenshtein distance
+    /// 
+    /// # Security
+    /// Protected by compute_similarity length check
     fn levenshtein_distance(&self, s1: &str, s2: &str) -> usize {
         let chars1: Vec<char> = s1.chars().collect();
         let chars2: Vec<char> = s2.chars().collect();
@@ -364,6 +468,12 @@ impl DiffEngine {
     }
 
     /// Get diff statistics
+    /// 
+    /// # Arguments
+    /// * `result` - The diff result
+    /// 
+    /// # Returns
+    /// DiffStats containing the statistics
     pub fn get_stats(&self, result: &DiffResult) -> DiffStats {
         let mut inserts = 0;
         let mut deletes = 0;
@@ -385,6 +495,11 @@ impl DiffEngine {
             replaces,
             similarity: result.similarity,
         }
+    }
+
+    /// Reset operation count
+    pub fn reset_operation_count(&mut self) {
+        self.operation_count = 0;
     }
 }
 
@@ -895,5 +1010,35 @@ mod tests {
         assert_eq!(result.similarity, 0.0);
         assert_eq!(result.total_changes, 0);
         assert!(engine.get_last_error().is_some());
+    }
+
+    #[test]
+    fn test_max_similarity_length() {
+        let engine = DiffEngine::new(Arc::new(ExportConfigService::new()));
+        let long_text = "a".repeat(MAX_SIMILARITY_LENGTH + 1);
+        let similarity = engine.compute_similarity(&long_text, &long_text);
+        // Should return conservative estimate for very long strings
+        assert_eq!(similarity, 0.5);
+    }
+
+    #[test]
+    fn test_reset_operation_count() {
+        let mut engine = DiffEngine::new(Arc::new(ExportConfigService::new()));
+        engine.compare("old", "new");
+        assert!(engine.get_operation_count() > 0);
+        
+        engine.reset_operation_count();
+        assert_eq!(engine.get_operation_count(), 0);
+    }
+
+    #[test]
+    fn test_max_changes_warning() {
+        let mut engine = DiffEngine::new(Arc::new(ExportConfigService::new()));
+        // Create a diff that would generate many changes
+        let old: String = (0..1000).map(|i| format!("line{}\n", i)).collect();
+        let new: String = (0..1000).map(|i| format!("modified{}\n", i)).collect();
+        let result = engine.compare(&old, &new);
+        // Should still work but log warning if changes exceed MAX_CHANGES
+        assert!(result.total_changes > 0);
     }
 }

@@ -3,6 +3,8 @@
  * Aerospace-grade implementation with comprehensive version tracking and validation
  */
 
+import { logger, LogCategory } from './logger';
+
 export interface DocumentVersion {
   id: string;
   version: number;
@@ -160,7 +162,7 @@ class VersionHistoryManager {
     // Verify checksum
     const currentChecksum = this.calculateChecksum(version.content);
     if (currentChecksum !== version.checksum) {
-      console.warn('Checksum mismatch when restoring version');
+      logger.warn('Checksum mismatch when restoring version', {}, LogCategory.SYSTEM);
     }
 
     return version.content;
@@ -362,7 +364,7 @@ class VersionHistoryManager {
         this.enforceMaxVersions();
       }
     } catch (error) {
-      console.error('Auto-save failed:', error);
+      logger.error('Auto-save failed', error, LogCategory.SYSTEM);
     }
   }
 

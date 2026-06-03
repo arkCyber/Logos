@@ -163,6 +163,43 @@ fn test_export_format_variants() {
 }
 
 #[test]
+fn test_html_to_svg_export() {
+    let mut generator = ExportGenerator::new();
+    let html = "<h1>Aerospace Title</h1><p>Body paragraph</p>";
+    let config = ExportConfig {
+        format: ExportFormat::Svg,
+        metadata: DocumentMetadata {
+            title: "HTML SVG Export".to_string(),
+            author: "LOGOS".to_string(),
+            subject: "SVG test".to_string(),
+            keywords: vec!["svg".to_string(), "html".to_string()],
+            created: Utc::now(),
+            modified: Utc::now(),
+        },
+        include_toc: false,
+        include_page_numbers: false,
+        compress_images: false,
+        embed_fonts: false,
+        use_typst_rendering: false,
+        typst_quality: TypstQuality::Standard,
+    };
+
+    let result = generator.export(html, &config);
+    assert!(result.is_ok());
+    let export_result = result.unwrap();
+    assert!(export_result.success);
+    assert_eq!(export_result.format, ExportFormat::Svg);
+
+    let svg = String::from_utf8(export_result.output_data);
+    assert!(svg.is_ok());
+    let svg = svg.unwrap();
+    assert!(svg.contains("<svg"));
+    assert!(svg.contains("Aerospace Title"));
+    assert!(svg.contains("Body paragraph"));
+    assert!(!svg.contains("<script>"));
+}
+
+#[test]
 fn test_batch_export() {
     let mut generator = ExportGenerator::new();
     let document_content = "# Test Document\n\nContent here.";

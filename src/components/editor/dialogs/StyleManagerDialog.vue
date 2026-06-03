@@ -146,7 +146,7 @@ const selectedStyle = ref<StyleDefinition | null>(null);
 const isEditing = ref(false);
 
 // New style form
-const newStyleForm = ref<StyleDefinition>({
+const newStyleForm = ref<StyleDefinition>({ // eslint-disable-line @typescript-eslint/no-unused-vars
   type: 'paragraph',
   name: '',
   formatting: {

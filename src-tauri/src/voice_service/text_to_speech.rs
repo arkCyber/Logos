@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use crate::error_handling::CircuitBreaker;
+use crate::config_service::ExportConfigService;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Voice {
@@ -31,20 +34,32 @@ impl Default for TTSConfig {
 pub struct TextToSpeech {
     config: TTSConfig,
     available_voices: Vec<Voice>,
+    config_service: Arc<ExportConfigService>,
+    circuit_breaker: CircuitBreaker,
 }
 
 impl TextToSpeech {
     pub fn new(config: TTSConfig) -> Self {
         let voices = Self::get_default_voices();
+        let config_service = Arc::new(ExportConfigService::new());
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             config,
             available_voices: voices,
+            config_service,
+            circuit_breaker,
         }
     }
 
     /// Speak text using platform-specific TTS
     pub fn speak(&self, text: &str) -> Result<(), String> {
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            return Err("Circuit breaker is open, blocking text-to-speech".to_string());
+        }
+
         if text.is_empty() {
+            self.circuit_breaker.record_failure();
             return Err("Text cannot be empty".to_string());
         }
 
@@ -59,6 +74,12 @@ impl TextToSpeech {
             eprintln!("Speaking (placeholder): {}", text);
             Ok(())
         };
+
+        if result.is_ok() {
+            self.circuit_breaker.record_success();
+        } else {
+            self.circuit_breaker.record_failure();
+        }
 
         result
     }
@@ -174,7 +195,7 @@ impl TextToSpeech {
 
     /// Stop speaking on macOS
     fn stop_macos(&self) -> Result<(), String> {
-        let output = Command::new("pkill")
+        let _output = Command::new("pkill")
             .arg("say")
             .output()
             .map_err(|e| format!("Failed to stop 'say' command: {}", e))?;
@@ -187,7 +208,7 @@ impl TextToSpeech {
     fn stop_windows(&self) -> Result<(), String> {
         let ps_script = "$voice = New-Object -ComObject SAPI.SPVoice; $voice.Speak('', 1)";
         
-        let output = Command::new("powershell")
+        let _output = Command::new("powershell")
             .arg("-Command")
             .arg(ps_script)
             .output()
@@ -198,7 +219,7 @@ impl TextToSpeech {
 
     /// Stop speaking on Linux
     fn stop_linux(&self) -> Result<(), String> {
-        let output = Command::new("pkill")
+        let _output = Command::new("pkill")
             .arg("espeak")
             .output()
             .map_err(|e| format!("Failed to stop 'espeak' command: {}", e))?;

@@ -263,6 +263,8 @@ impl Default for PngConfig {
 pub struct SvgConfig {
     /// Maximum HTML content length in bytes
     pub max_html_length: usize,
+    /// Maximum text content length in bytes
+    pub max_text_length: usize,
     /// Maximum element count
     pub max_element_count: usize,
     /// Maximum output file size in bytes
@@ -273,6 +275,7 @@ impl Default for SvgConfig {
     fn default() -> Self {
         Self {
             max_html_length: 52_428_800,
+            max_text_length: 1_048_576,
             max_element_count: 10_000,
             max_output_size: 104_857_600,
         }

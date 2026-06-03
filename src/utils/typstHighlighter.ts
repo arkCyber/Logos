@@ -4,6 +4,7 @@
  */
 
 import { createLowlight, common } from 'lowlight';
+import { logger, LogCategory } from '../utils/logger';
 
 // Typst 语法定义
 const typstLanguage = {
@@ -112,7 +113,7 @@ export class TypstHighlighter {
       const result = this.lowlight.highlightAuto(code);
       return result.value || code;
     } catch (error) {
-      console.error('Typst highlighting error:', error);
+      logger.error('Typst highlighting error', error, LogCategory.SYSTEM);
       return code;
     }
   }
@@ -129,7 +130,7 @@ export class TypstHighlighter {
       const result = this.lowlight.highlightAuto(code);
       return result.value || `<pre><code>${this.escapeHTML(code)}</code></pre>`;
     } catch (error) {
-      console.error('Typst HTML highlighting error:', error);
+      logger.error('Typst HTML highlighting error', error, LogCategory.SYSTEM);
       return `<pre><code>${this.escapeHTML(code || '')}</code></pre>`;
     }
   }

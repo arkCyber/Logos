@@ -1,5 +1,4 @@
 use super::{OdtParagraphStyle, OdtTextStyle};
-use super::style::OdtAlignment;
 use serde::{Deserialize, Serialize};
 
 /// ODT 段落类型
@@ -108,6 +107,7 @@ impl OdtParagraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::style::OdtAlignment;
 
     #[test]
     fn test_odt_paragraph_new() {

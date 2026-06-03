@@ -9,9 +9,16 @@
 //! - Fault tolerance and error recovery
 
 use serde::{Deserialize, Serialize};
-use crate::error_handling::{ErrorContext, ErrorSeverity};
+use crate::error_handling::{ErrorContext, ErrorSeverity, CircuitBreaker};
 use crate::config_service::ExportConfigService;
 use std::sync::Arc;
+use std::time::Instant;
+
+/// Performance threshold for warning (in milliseconds)
+const PERFORMANCE_WARNING_THRESHOLD_MS: u128 = 500;
+
+/// Performance threshold for critical warning (in milliseconds)
+const PERFORMANCE_CRITICAL_THRESHOLD_MS: u128 = 2000;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(dead_code)]
@@ -33,20 +40,55 @@ pub struct LatexRenderer {
     config_service: Arc<ExportConfigService>,
     operation_count: u64,
     last_error: Option<ErrorContext>,
+    circuit_breaker: CircuitBreaker,
     // In production, this would use a proper LaTeX rendering library
     // For now, we'll use a simplified approach with katex-rs or similar
 }
 
 impl LatexRenderer {
+    /// Creates a new LaTeX renderer instance
+    /// 
+    /// # Arguments
+    /// * `config_service` - The configuration service
+    /// 
+    /// # Returns
+    /// A new LatexRenderer instance
     pub fn new(config_service: Arc<ExportConfigService>) -> Self {
+        let circuit_breaker = CircuitBreaker::new(config_service.clone());
         Self {
             config_service,
             operation_count: 0,
             last_error: None,
+            circuit_breaker,
         }
     }
 
+    /// Get the performance warning threshold
+    /// 
+    /// # Returns
+    /// The performance warning threshold in milliseconds
+    pub fn performance_warning_threshold_ms() -> u128 {
+        PERFORMANCE_WARNING_THRESHOLD_MS
+    }
+
+    /// Get the performance critical threshold
+    /// 
+    /// # Returns
+    /// The performance critical threshold in milliseconds
+    pub fn performance_critical_threshold_ms() -> u128 {
+        PERFORMANCE_CRITICAL_THRESHOLD_MS
+    }
+
     /// Validate LaTeX length
+    /// 
+    /// # Arguments
+    /// * `latex` - The LaTeX expression to validate
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Security
+    /// Prevents DoS attacks by limiting LaTeX expression length
     fn validate_latex_length(&self, latex: &str) -> Result<(), String> {
         let math_config = self.config_service.get_math_config();
         if latex.len() > math_config.max_latex_length {
@@ -56,6 +98,15 @@ impl LatexRenderer {
     }
 
     /// Validate nesting depth
+    /// 
+    /// # Arguments
+    /// * `latex` - The LaTeX expression to validate
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Security
+    /// Prevents stack overflow and performance issues by limiting nesting depth
     fn validate_nesting_depth(&self, latex: &str) -> Result<(), String> {
         let math_config = self.config_service.get_math_config();
         let mut depth = 0;
@@ -81,6 +132,15 @@ impl LatexRenderer {
     }
 
     /// Validate command length
+    /// 
+    /// # Arguments
+    /// * `latex` - The LaTeX expression to validate
+    /// 
+    /// # Returns
+    /// Result indicating success or failure
+    /// 
+    /// # Security
+    /// Prevents DoS attacks by limiting command length
     fn validate_command_length(&self, latex: &str) -> Result<(), String> {
         let math_config = self.config_service.get_math_config();
         let mut command_start = None;
@@ -88,19 +148,25 @@ impl LatexRenderer {
         for (i, c) in latex.chars().enumerate() {
             if c == '\\' {
                 command_start = Some(i);
-            } else if command_start.is_some() && !c.is_alphabetic() {
-                let start = command_start.unwrap();
-                let length = i - start;
-                if length > math_config.max_command_length {
-                    return Err(format!("Command exceeds maximum length of {}", math_config.max_command_length));
+            } else if let Some(start) = command_start {
+                if !c.is_alphabetic() {
+                    let length = i - start;
+                    if length > math_config.max_command_length {
+                        return Err(format!("Command exceeds maximum length of {}", math_config.max_command_length));
+                    }
+                    command_start = None;
                 }
-                command_start = None;
             }
         }
         Ok(())
     }
 
     /// Record error context
+    /// 
+    /// # Arguments
+    /// * `code` - The error code
+    /// * `message` - The error message
+    /// * `source` - The source of the error
     fn record_error(&mut self, code: &str, message: &str, source: &str) {
         self.last_error = Some(ErrorContext::new(
             ErrorSeverity::Error,
@@ -111,11 +177,17 @@ impl LatexRenderer {
     }
 
     /// Get last error
+    /// 
+    /// # Returns
+    /// Option containing the last error context, if any
     pub fn get_last_error(&self) -> Option<&ErrorContext> {
         self.last_error.as_ref()
     }
 
     /// Get operation count
+    /// 
+    /// # Returns
+    /// The number of render operations performed
     pub fn get_operation_count(&self) -> u64 {
         self.operation_count
     }
@@ -125,43 +197,86 @@ impl LatexRenderer {
         self.last_error = None;
     }
 
+    /// Reset operation count
+    pub fn reset_operation_count(&mut self) {
+        self.operation_count = 0;
+    }
+
     /// Render LaTeX to HTML with validation
+    /// 
+    /// # Arguments
+    /// * `latex` - The LaTeX expression to render
+    /// * `display_mode` - Whether to render in display mode (block) or inline mode
+    /// 
+    /// # Returns
+    /// Result containing the HTML string or an error message
+    /// 
+    /// # Performance
+    /// Logs a warning if processing takes longer than PERFORMANCE_WARNING_THRESHOLD_MS
+    /// Logs a critical warning if processing takes longer than PERFORMANCE_CRITICAL_THRESHOLD_MS
+    /// 
+    /// # Security
+    /// Validates input length, nesting depth, command length, and syntax
+    /// 
+    /// # Note
     /// This is a simplified implementation. In production, use katex-rs or similar
     pub fn render(&mut self, latex: &str, display_mode: bool) -> Result<String, String> {
+        let start_time = Instant::now();
         self.operation_count += 1;
 
+        // Check circuit breaker
+        if !self.circuit_breaker.allow_operation() {
+            let error = "Circuit breaker is open, blocking LaTeX rendering".to_string();
+            self.record_error("CIRCUIT_BREAKER_OPEN", &error, "render");
+            return Err(error);
+        }
+
         if latex.trim().is_empty() {
+            self.circuit_breaker.record_success();
             return Ok(String::new());
         }
 
         // Validate LaTeX length
         if let Err(e) = self.validate_latex_length(latex) {
             self.record_error("INVALID_LENGTH", &e, "render");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate nesting depth
         if let Err(e) = self.validate_nesting_depth(latex) {
             self.record_error("INVALID_NESTING", &e, "render");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate command length
         if let Err(e) = self.validate_command_length(latex) {
             self.record_error("INVALID_COMMAND", &e, "render");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Validate LaTeX syntax (simplified)
         if let Err(e) = self.validate_latex(latex) {
             self.record_error("INVALID_SYNTAX", &e, "render");
+            self.circuit_breaker.record_failure();
             return Err(e);
         }
 
         // Convert LaTeX to HTML using katex-rs
         let html = self.latex_to_html(latex, display_mode)?;
 
+        // Performance monitoring
+        let elapsed = start_time.elapsed();
+        if elapsed.as_millis() > PERFORMANCE_CRITICAL_THRESHOLD_MS {
+            eprintln!("LaTeX render CRITICAL performance warning: took {}ms", elapsed.as_millis());
+        } else if elapsed.as_millis() > PERFORMANCE_WARNING_THRESHOLD_MS {
+            eprintln!("LaTeX render performance warning: took {}ms", elapsed.as_millis());
+        }
+
         self.last_error = None;
+        self.circuit_breaker.record_success();
         Ok(html)
     }
 
@@ -746,5 +861,21 @@ mod tests {
         let result = renderer.render(&deep_latex, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds maximum"));
+    }
+
+    #[test]
+    fn test_performance_threshold_getters() {
+        assert_eq!(LatexRenderer::performance_warning_threshold_ms(), PERFORMANCE_WARNING_THRESHOLD_MS);
+        assert_eq!(LatexRenderer::performance_critical_threshold_ms(), PERFORMANCE_CRITICAL_THRESHOLD_MS);
+    }
+
+    #[test]
+    fn test_reset_operation_count() {
+        let mut renderer = LatexRenderer::new(Arc::new(ExportConfigService::new()));
+        let _ = renderer.render("x^2", false);
+        assert!(renderer.get_operation_count() > 0);
+        
+        renderer.reset_operation_count();
+        assert_eq!(renderer.get_operation_count(), 0);
     }
 }

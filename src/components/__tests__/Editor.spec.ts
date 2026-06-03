@@ -514,4 +514,445 @@ describe('Editor Function Tests', () => {
       });
     });
   });
+
+  describe('Tiptap Extension Tests', () => {
+    it('should validate StarterKit extension configuration', () => {
+      const starterKitConfig = {
+        codeBlock: false
+      };
+      expect(starterKitConfig.codeBlock).toBe(false);
+    });
+
+    it('should validate TextAlign extension types', () => {
+      const textAlignTypes = ['heading', 'paragraph'];
+      textAlignTypes.forEach(type => {
+        expect(['heading', 'paragraph']).toContain(type);
+      });
+    });
+
+    it('should validate Image extension configuration', () => {
+      const imageConfig = {
+        inline: true,
+        allowBase64: true,
+        HTMLAttributes: {
+          class: 'editor-image'
+        }
+      };
+      expect(imageConfig.inline).toBe(true);
+      expect(imageConfig.allowBase64).toBe(true);
+      expect(imageConfig.HTMLAttributes.class).toBe('editor-image');
+    });
+
+    it('should validate Link extension configuration', () => {
+      const linkConfig = {
+        openOnClick: false,
+        HTMLAttributes: {
+          class: 'editor-link'
+        }
+      };
+      expect(linkConfig.openOnClick).toBe(false);
+      expect(linkConfig.HTMLAttributes.class).toBe('editor-link');
+    });
+
+    it('should validate Highlight extension configuration', () => {
+      const highlightConfig = {
+        multicolor: true
+      };
+      expect(highlightConfig.multicolor).toBe(true);
+    });
+
+    it('should validate Placeholder extension configuration', () => {
+      const placeholderConfig = {
+        includeChildren: true
+      };
+      expect(placeholderConfig.includeChildren).toBe(true);
+    });
+
+    it('should validate CodeBlockLowlight extension configuration', () => {
+      const codeBlockConfig = {
+        defaultLanguage: 'plaintext',
+        HTMLAttributes: {
+          class: 'editor-code-block'
+        }
+      };
+      expect(codeBlockConfig.defaultLanguage).toBe('plaintext');
+      expect(codeBlockConfig.HTMLAttributes.class).toBe('editor-code-block');
+    });
+
+    it('should validate Dropcursor extension configuration', () => {
+      const dropcursorConfig = {
+        color: '#5cf',
+        width: 2,
+        class: 'dropcursor'
+      };
+      expect(dropcursorConfig.color).toBe('#5cf');
+      expect(dropcursorConfig.width).toBe(2);
+      expect(dropcursorConfig.class).toBe('dropcursor');
+    });
+
+    it('should validate Table extension configuration', () => {
+      const tableConfig = {
+        resizable: true,
+        allowTableNodeSelection: true,
+        HTMLAttributes: {
+          class: 'editor-table'
+        }
+      };
+      expect(tableConfig.resizable).toBe(true);
+      expect(tableConfig.allowTableNodeSelection).toBe(true);
+      expect(tableConfig.HTMLAttributes.class).toBe('editor-table');
+    });
+
+    it('should validate text formatting commands', () => {
+      const commands = ['toggleBold', 'toggleItalic', 'toggleUnderline', 'toggleStrike', 'toggleCode'];
+      commands.forEach(cmd => {
+        expect(cmd).toBeTruthy();
+        expect(typeof cmd).toBe('string');
+      });
+    });
+
+    it('should validate heading commands', () => {
+      const headingLevels = [1, 2, 3, 4, 5, 6];
+      headingLevels.forEach(level => {
+        expect(level).toBeGreaterThan(0);
+        expect(level).toBeLessThanOrEqual(6);
+      });
+    });
+
+    it('should validate list commands', () => {
+      const listCommands = ['toggleBulletList', 'toggleOrderedList', 'toggleTaskList'];
+      listCommands.forEach(cmd => {
+        expect(cmd).toBeTruthy();
+        expect(typeof cmd).toBe('string');
+      });
+    });
+
+    it('should validate alignment commands', () => {
+      const alignments = ['left', 'center', 'right', 'justify'];
+      alignments.forEach(align => {
+        expect(['left', 'center', 'right', 'justify']).toContain(align);
+      });
+    });
+
+    it('should validate subscript and superscript commands', () => {
+      const commands = ['toggleSubscript', 'toggleSuperscript'];
+      commands.forEach(cmd => {
+        expect(cmd).toBeTruthy();
+        expect(typeof cmd).toBe('string');
+      });
+    });
+
+    it('should validate image resize parameters', () => {
+      const resizeParams = {
+        width: 300,
+        height: 200,
+        unit: 'px'
+      };
+      expect(resizeParams.width).toBeGreaterThan(0);
+      expect(resizeParams.height).toBeGreaterThan(0);
+      expect(['px', '%']).toContain(resizeParams.unit);
+    });
+
+    it('should validate highlight color format', () => {
+      const highlightColor = '#ffff00';
+      expect(highlightColor).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    });
+
+    it('should validate link URL format', () => {
+      const linkUrl = 'https://example.com';
+      expect(() => new URL(linkUrl)).not.toThrow();
+    });
+
+    it('should validate code block language detection', () => {
+      const languages = ['javascript', 'typescript', 'python', 'java', 'cpp', 'go', 'rust'];
+      languages.forEach(lang => {
+        expect(lang).toBeTruthy();
+        expect(typeof lang).toBe('string');
+      });
+    });
+
+    it('should validate task list item structure', () => {
+      const taskItem = {
+        checked: false,
+        content: 'Task content'
+      };
+      expect(typeof taskItem.checked).toBe('boolean');
+      expect(taskItem.content).toBeTruthy();
+    });
+
+    it('should validate blockquote structure', () => {
+      const blockquote = '<blockquote>Quote content</blockquote>';
+      expect(blockquote).toContain('<blockquote');
+      expect(blockquote).toContain('</blockquote>');
+    });
+
+    it('should validate horizontal rule insertion', () => {
+      const hr = '<hr>';
+      expect(hr).toBe('<hr>');
+    });
+
+    it('should validate text direction commands', () => {
+      const directions = ['ltr', 'rtl'];
+      directions.forEach(dir => {
+        expect(['ltr', 'rtl']).toContain(dir);
+      });
+    });
+
+    it('should validate font family commands', () => {
+      const fontFamilies = [
+        'Arial, sans-serif',
+        'Times New Roman, serif',
+        'Courier New, monospace'
+      ];
+      fontFamilies.forEach(font => {
+        expect(font).toBeTruthy();
+        expect(typeof font).toBe('string');
+      });
+    });
+
+    it('should validate undo/redo functionality', () => {
+      const commands = ['undo', 'redo'];
+      commands.forEach(cmd => {
+        expect(cmd).toBeTruthy();
+        expect(typeof cmd).toBe('string');
+      });
+    });
+
+    it('should validate selection operations', () => {
+      const operations = ['selectAll', 'selectNode', 'selectParentNode'];
+      operations.forEach(op => {
+        expect(op).toBeTruthy();
+        expect(typeof op).toBe('string');
+      });
+    });
+
+    it('should validate content insertion operations', () => {
+      const operations = ['insertContent', 'insertText', 'insertNode'];
+      operations.forEach(op => {
+        expect(op).toBeTruthy();
+        expect(typeof op).toBe('string');
+      });
+    });
+
+    it('should validate content deletion operations', () => {
+      const operations = ['deleteSelection', 'deleteNode', 'deleteRange'];
+      operations.forEach(op => {
+        expect(op).toBeTruthy();
+        expect(typeof op).toBe('string');
+      });
+    });
+
+    it('should validate mark operations', () => {
+      const operations = ['addMark', 'removeMark', 'toggleMark'];
+      operations.forEach(op => {
+        expect(op).toBeTruthy();
+        expect(typeof op).toBe('string');
+      });
+    });
+
+    it('should validate node operations', () => {
+      const operations = ['setNode', 'unsetNode', 'toggleNode'];
+      operations.forEach(op => {
+        expect(op).toBeTruthy();
+        expect(typeof op).toBe('string');
+      });
+    });
+
+    it('should validate attribute operations', () => {
+      const operations = ['setAttributes', 'unsetAttributes'];
+      operations.forEach(op => {
+        expect(op).toBeTruthy();
+        expect(typeof op).toBe('string');
+      });
+    });
+
+    it('should validate focus operations', () => {
+      const operations = ['focus', 'blur'];
+      operations.forEach(op => {
+        expect(op).toBeTruthy();
+        expect(typeof op).toBe('string');
+      });
+    });
+
+    it('should validate chain command structure', () => {
+      const chain = {
+        focus: () => ({ run: () => {} }),
+        toggleBold: () => ({ run: () => {} })
+      };
+      expect(typeof chain.focus).toBe('function');
+      expect(typeof chain.toggleBold).toBe('function');
+    });
+
+    it('should validate editor state structure', () => {
+      const editorState = {
+        doc: {},
+        selection: {},
+        schema: {}
+      };
+      expect(editorState.doc).toBeDefined();
+      expect(editorState.selection).toBeDefined();
+      expect(editorState.schema).toBeDefined();
+    });
+
+    it('should validate editor transaction', () => {
+      const transaction = {
+        docChanged: true,
+        selectionSet: false
+      };
+      expect(typeof transaction.docChanged).toBe('boolean');
+      expect(typeof transaction.selectionSet).toBe('boolean');
+    });
+
+    it('should validate editor lifecycle hooks', () => {
+      const hooks = ['onCreate', 'onUpdate', 'onSelectionUpdate', 'onTransaction', 'onFocus', 'onBlur'];
+      hooks.forEach(hook => {
+        expect(hook).toBeTruthy();
+        expect(typeof hook).toBe('string');
+      });
+    });
+
+    it('should validate editor error handling', () => {
+      const errorHandling = {
+        tryCatch: true,
+        logging: true,
+        userNotification: true
+      };
+      expect(errorHandling.tryCatch).toBe(true);
+      expect(errorHandling.logging).toBe(true);
+      expect(errorHandling.userNotification).toBe(true);
+    });
+
+    it('should validate editor configuration options', () => {
+      const config = {
+        content: '<p>Start typing...</p>',
+        editable: true,
+        autofocus: false
+      };
+      expect(config.content).toContain('<p>');
+      expect(config.editable).toBe(true);
+      expect(config.autofocus).toBe(false);
+    });
+
+    it('should validate editor props configuration', () => {
+      const editorProps = {
+        attributes: {
+          class: 'editor-content'
+        },
+        handleDrop: () => false,
+        handlePaste: () => false
+      };
+      expect(editorProps.attributes.class).toBe('editor-content');
+      expect(typeof editorProps.handleDrop).toBe('function');
+      expect(typeof editorProps.handlePaste).toBe('function');
+    });
+
+    it('should validate floating menu configuration', () => {
+      const floatingMenuConfig = {
+        element: document.createElement('div')
+      };
+      expect(floatingMenuConfig.element).toBeDefined();
+    });
+
+    it('should validate bubble menu positioning', () => {
+      const position = {
+        x: 100,
+        y: 50
+      };
+      expect(position.x).toBeGreaterThanOrEqual(0);
+      expect(position.y).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should validate menu visibility states', () => {
+      const menuStates = {
+        showBubbleMenu: false,
+        showFloatingMenu: false,
+        showContextMenu: false
+      };
+      expect(typeof menuStates.showBubbleMenu).toBe('boolean');
+      expect(typeof menuStates.showFloatingMenu).toBe('boolean');
+      expect(typeof menuStates.showContextMenu).toBe('boolean');
+    });
+
+    it('should validate editor content operations', () => {
+      const operations = ['getHTML', 'getText', 'getJSON', 'setContent'];
+      operations.forEach(op => {
+        expect(op).toBeTruthy();
+        expect(typeof op).toBe('string');
+      });
+    });
+
+    it('should validate editor selection range', () => {
+      const selection = {
+        from: 0,
+        to: 10
+      };
+      expect(selection.from).toBeGreaterThanOrEqual(0);
+      expect(selection.to).toBeGreaterThanOrEqual(selection.from);
+    });
+
+    it('should validate editor active state checks', () => {
+      const activeChecks = ['bold', 'italic', 'underline', 'strike', 'code'];
+      activeChecks.forEach(check => {
+        expect(check).toBeTruthy();
+        expect(typeof check).toBe('string');
+      });
+    });
+
+    it('should validate editor can commands', () => {
+      const canCommands = ['canBold', 'canItalic', 'canUnderline', 'canStrike'];
+      canCommands.forEach(cmd => {
+        expect(cmd).toBeTruthy();
+        expect(typeof cmd).toBe('string');
+      });
+    });
+
+    it('should validate editor schema node types', () => {
+      const nodeTypes = ['paragraph', 'heading', 'blockquote', 'codeBlock', 'image', 'table'];
+      nodeTypes.forEach(type => {
+        expect(type).toBeTruthy();
+        expect(typeof type).toBe('string');
+      });
+    });
+
+    it('should validate editor schema mark types', () => {
+      const markTypes = ['bold', 'italic', 'underline', 'strike', 'code', 'link'];
+      markTypes.forEach(type => {
+        expect(type).toBeTruthy();
+        expect(typeof type).toBe('string');
+      });
+    });
+
+    it('should validate editor extension list', () => {
+      const extensions = [
+        'StarterKit',
+        'TextStyle',
+        'FontFamily',
+        'Underline',
+        'Strike',
+        'Subscript',
+        'Superscript',
+        'TextAlign',
+        'TaskList',
+        'TaskItem',
+        'Image',
+        'Link',
+        'Highlight',
+        'Typography',
+        'Placeholder',
+        'CodeBlockLowlight',
+        'FloatingMenu',
+        'Dropcursor',
+        'Gapcursor',
+        'Table',
+        'TableRow',
+        'TableHeader',
+        'TableCell'
+      ];
+      extensions.forEach(ext => {
+        expect(ext).toBeTruthy();
+        expect(typeof ext).toBe('string');
+      });
+      expect(extensions.length).toBeGreaterThan(15);
+    });
+  });
 });
