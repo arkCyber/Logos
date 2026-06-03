@@ -34,6 +34,7 @@ dist-ssr
 src-tauri/target/
 src-tauri/Cargo.lock
 src-tauri/WixTools/
+spreadsheet-service/target/
 
 # Test coverage
 coverage
