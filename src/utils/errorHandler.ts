@@ -3,7 +3,7 @@
  * 提供完整的错误追踪、恢复和报告机制
  */
 
-import { logger } from './logger';
+import { logger, LogCategory } from './logger';
 
 /**
  * 通知接口
@@ -594,7 +594,7 @@ export async function retry<T>(
     }
   }
 
-  throw _lastError;
+  throw __lastError;
 }
 
 /**

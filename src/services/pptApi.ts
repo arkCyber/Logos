@@ -253,6 +253,63 @@ class PptApiService {
       throw new Error(`Failed to reorder slides: ${response.statusText}`);
     }
   }
+
+  // Animation operations
+  async applyAnimation(slideId: string, animationType: string, options?: { duration?: number; direction?: string }): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/slides/${slideId}/animations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ type: animationType, options })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to apply animation: ${response.statusText}`);
+    }
+  }
+
+  async removeAnimation(slideId: string, _animationId?: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/slides/${slideId}/animations`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to remove animation: ${response.statusText}`);
+    }
+  }
+
+  async applyTransition(slideId: string, transitionType: string, duration?: number): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/slides/${slideId}/transition`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ type: transitionType, duration })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to apply transition: ${response.statusText}`);
+    }
+  }
+
+  // SmartArt operations
+  async insertSmartArt(slideId: string, typeOrData: string | { nodes?: string[] } = {}, maybeData?: { nodes?: string[] }): Promise<void> {
+    const payload: Record<string, unknown> = typeof typeOrData === 'string'
+      ? { type: typeOrData, data: maybeData }
+      : { data: typeOrData };
+    const response = await fetch(`${this.baseUrl}/slides/${slideId}/smartart`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to insert SmartArt: ${response.statusText}`);
+    }
+  }
 }
 
 // Export singleton instance

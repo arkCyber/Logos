@@ -156,3 +156,8 @@ declare module 'file-saver' {
     options?: { autoBom?: boolean }
   ): void;
 }
+
+// jQuery
+declare module 'jquery' {
+  export = jQuery;
+}

@@ -28,8 +28,11 @@ export interface CursorConfig {
  * 负责追踪本地光标位置、接收远程光标、渲染远程光标
  */
 export class CursorTracker {
+  private static readonly MAX_HISTORY = 50;
+
   private editor: Editor | null = null;
   private localPosition: number = 0;
+  private cursorHistory: number[] = [];
   private remoteCursors: Map<string, CursorInfo> = new Map();
   private config: CursorConfig = {
     showUserName: true,
@@ -75,7 +78,13 @@ export class CursorTracker {
    * 追踪本地光标位置
    */
   trackLocalPosition(position: number): void {
-    this.localPosition = position;
+    if (this.localPosition !== position) {
+      this.localPosition = position;
+      this.cursorHistory.push(position);
+      if (this.cursorHistory.length > CursorTracker.MAX_HISTORY) {
+        this.cursorHistory.shift();
+      }
+    }
 
     // 防抖处理
     if (this.updateDebounceTimer) {
@@ -156,6 +165,29 @@ export class CursorTracker {
    */
   getLocalPosition(): number {
     return this.localPosition;
+  }
+
+  /**
+   * 获取光标历史记录
+   */
+  getCursorHistory(): number[] {
+    return [...this.cursorHistory];
+  }
+
+  /**
+   * 获取验证后的本地位置（边界检查）
+   */
+  getValidatedLocalPosition(maxPosition?: number): number {
+    const max = maxPosition ?? Infinity;
+    return Math.min(Math.max(0, this.localPosition), max);
+  }
+
+  /**
+   * 获取上一个光标位置
+   */
+  getPreviousPosition(): number | null {
+    if (this.cursorHistory.length < 2) return null;
+    return this.cursorHistory[this.cursorHistory.length - 2];
   }
 
   /**
@@ -248,6 +280,42 @@ export class CursorTracker {
    */
   updateConfig(config: Partial<CursorConfig>): void {
     this.config = { ...this.config, ...config };
+  }
+
+  /**
+   * 检查光标是否可见
+   */
+  isCursorVisible(): boolean {
+    if (!this.editor || (this.editor as any).isDestroyed) return false;
+    const scrollContainer = (this.editor.view?.dom?.parentElement ?? null) as HTMLElement | null;
+    if (!scrollContainer) return false;
+    const dom = this.editor.view?.dom as HTMLElement | null;
+    if (!dom) return false;
+    const rect = dom.getBoundingClientRect();
+    const scrollRect = scrollContainer.getBoundingClientRect();
+    return rect.top < scrollRect.bottom && rect.bottom > scrollRect.top;
+  }
+
+  /**
+   * 获取光标屏幕坐标
+   */
+  getCursorScreenCoordinates(): { top: number; left: number } | null {
+    if (!this.editor || (this.editor as any).isDestroyed) return null;
+    const dom = this.editor.view?.dom as HTMLElement | null;
+    if (!dom) return null;
+    const rect = dom.getBoundingClientRect();
+    return { top: rect.top, left: rect.left };
+  }
+
+  /**
+   * 获取光标追踪统计信息
+   */
+  getStats(): { localPosition: number; remoteCursorCount: number; historySize: number } {
+    return {
+      localPosition: this.localPosition,
+      remoteCursorCount: this.remoteCursors.size,
+      historySize: this.cursorHistory.length
+    };
   }
 
   /**

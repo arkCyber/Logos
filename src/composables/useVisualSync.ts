@@ -79,6 +79,29 @@ export function useVisualSync(
   };
 
   /**
+   * 估算编辑器的单页高度（从第一页DOM元素获取）
+   */
+  const estimatePageHeight = (): number => {
+    if (!editorContainer) return 800;
+    const firstPage = editorContainer.querySelector('[data-page]') as HTMLElement;
+    if (firstPage) {
+      return firstPage.offsetHeight || 800;
+    }
+    // 备用：使用容器视口高度
+    return editorContainer.clientHeight || 800;
+  };
+
+  /**
+   * 根据编辑器滚动偏移估算PDF页码和页内偏移
+   */
+  const estimatePdfPageFromOffset = (offset: number): { page: number; pageOffset: number } => {
+    const pageHeight = estimatePageHeight();
+    const page = Math.floor(offset / pageHeight) + 1;
+    const pageOffset = offset % pageHeight;
+    return { page, pageOffset };
+  };
+
+  /**
    * 扫描编辑器元素并建立映射
    */
   const scanEditorElements = (): ElementPosition[] => {
@@ -94,12 +117,14 @@ return [];
       const type = element.getAttribute('data-element-type') as ElementPosition['type'] || 'paragraph';
       const offset = (element as HTMLElement).offsetTop;
 
+      const { page, pageOffset } = estimatePdfPageFromOffset(offset);
+
       positions.push({
         id,
         type,
         editorOffset: offset,
-        pdfPage: 1, // TODO: 从PDF获取对应页码
-        pdfOffset: 0 // TODO: 从PDF获取对应偏移
+        pdfPage: page,
+        pdfOffset: pageOffset
       });
     });
 
@@ -204,8 +229,9 @@ return;
       if (targetPosition) {
         syncState.value.currentElement = targetPosition;
         
-        // 计算PDF滚动位置
-        const pdfScrollTop = (targetPosition.pdfPage - 1) * pdfContainer.clientHeight + targetPosition.pdfOffset;
+        // 计算PDF滚动位置：使用估算的页面高度保证一致性
+        const pageHeight = estimatePageHeight();
+        const pdfScrollTop = (targetPosition.pdfPage - 1) * pageHeight + targetPosition.pdfOffset;
         
         // 滚动PDF
         scrollToPdf(pdfScrollTop);
@@ -243,9 +269,10 @@ return;
         const positions = Array.from(elementMap.value.values());
         
         // 找到最接近当前PDF滚动位置的元素
+        const pageHeight = estimatePageHeight();
         targetPosition = positions.reduce((closest, pos) => {
-          const pdfScrollTop = (pos.pdfPage - 1) * (pdfContainer?.clientHeight || 0) + pos.pdfOffset;
-          if (Math.abs(pdfScrollTop - scrollTop) < Math.abs((closest.pdfPage - 1) * (pdfContainer?.clientHeight || 0) + closest.pdfOffset - scrollTop)) {
+          const pdfScrollTop = (pos.pdfPage - 1) * pageHeight + pos.pdfOffset;
+          if (Math.abs(pdfScrollTop - scrollTop) < Math.abs((closest.pdfPage - 1) * pageHeight + closest.pdfOffset - scrollTop)) {
             return pos;
           }
           return closest;

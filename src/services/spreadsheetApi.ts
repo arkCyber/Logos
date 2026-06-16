@@ -42,7 +42,7 @@ export interface PivotTable {
   updated_at: string;
 }
 
-class SpreadsheetApiService {
+export class SpreadsheetApiService {
   private baseUrl: string;
 
   constructor(baseUrl: string = SPREADSHEET_API_BASE) {
