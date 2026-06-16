@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { List, ChevronRight, ChevronDown, FileText } from 'lucide-vue-next';
 
 interface Props {
@@ -12,7 +12,7 @@ interface Emits {
   (e: 'navigate-to', id: string): void;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 const expandedItems = ref<Set<string>>(new Set());

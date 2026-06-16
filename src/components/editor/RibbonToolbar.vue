@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { 
-  Paintbrush, Clipboard, Scissors, Copy, TrendingUp, Search, FileText, SquareCheck,
+import { Clipboard, Scissors, Copy, TrendingUp, Search, FileText, SquareCheck,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, IndentDecrease, IndentIncrease,
   Heading1, Heading2, Heading3, ChevronDown, ChevronUp
 } from 'lucide-vue-next';
+import { Brush as Paintbrush } from 'lucide-vue-next';
+import WatermarkGroup from './toolbar/WatermarkGroup.vue';
 
 interface Props {
   activeTab: string;
   fontFamily: string;
   fontSize: number;
+  styles?: string[];
+  currentStyle?: string;
 }
 
 interface Emits {
@@ -54,6 +57,7 @@ interface Emits {
   (e: 'find-text'): void;
   (e: 'replace-text'): void;
   (e: 'select-all'): void;
+  (e: 'set-style', style: string): void;
   (e: 'insert-table'): void;
   (e: 'insert-image'): void;
   (e: 'insert-link'): void;
@@ -65,6 +69,7 @@ interface Emits {
   (e: 'insert-header'): void;
   (e: 'insert-footer'): void;
   (e: 'insert-page-number'): void;
+  (e: 'insert-watermark'): void;
   (e: 'set-orientation', orientation: 'portrait' | 'landscape'): void;
   (e: 'set-columns', count: number): void;
   (e: 'set-margins'): void;
@@ -85,8 +90,18 @@ interface Emits {
   (e: 'toggle-navigation-pane'): void;
 }
 
-defineProps<Props>();
+withDefaults(defineProps<Props>(), {
+  activeTab: '',
+  fontFamily: 'Calibri',
+  fontSize: 11,
+  styles: () => ['正常', '标题 1', '标题 2', '标题 3', '无间距', '引用'],
+  currentStyle: '正常'
+});
 const emit = defineEmits<Emits>();
+
+const handleStyleChange = (style: string) => {
+  emit('set-style', style);
+};
 
 // Paragraph group expansion state
 const isParagraphExpanded = ref(false);
@@ -349,12 +364,14 @@ const tabs = [
         <!-- Styles Group -->
         <div class="ribbon-group">
           <div class="group-content">
-            <select class="ribbon-select compact">
-              <option>正常</option>
-              <option>无间距</option>
-              <option>标题1</option>
-              <option>标题2</option>
-              <option>引用</option>
+            <select
+              class="ribbon-select compact"
+              :value="currentStyle"
+              @change="handleStyleChange(($event.target as HTMLSelectElement).value)"
+            >
+              <option v-for="style in styles" :key="style" :value="style">
+                {{ style }}
+              </option>
             </select>
             <button class="ribbon-button" title="更改样式" @click="emit('change-styles')">
               <TrendingUp :size="20" />
@@ -469,7 +486,12 @@ const tabs = [
           <div class="group-label">链接</div>
         </div>
 
-        <!-- Symbols Group -->
+        <!-- Watermark Group -->
+      <WatermarkGroup
+        @insert-watermark="emit('insert-watermark')"
+      />
+
+      <!-- Symbols Group -->
         <div class="ribbon-group">
           <div class="group-content">
             <button class="ribbon-button" title="插入符号" aria-label="插入符号" @click="emit('insert-symbol')">

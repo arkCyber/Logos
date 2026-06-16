@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import BaseDialog from './BaseDialog.vue';
 
 interface Props {
@@ -30,7 +30,7 @@ interface ChartStyle {
   showLabels: boolean;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 // Chart type

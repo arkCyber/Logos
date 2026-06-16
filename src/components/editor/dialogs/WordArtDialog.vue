@@ -23,7 +23,7 @@ interface WordArtDefinition {
   transform: string;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 // WordArt text

@@ -82,6 +82,7 @@ use text_conversion_service::{TextConversionService, ConversionConfig, CharStats
 use std::sync::Arc;
 use typist_service::incremental::IncrementalCompiler;
 use typist_service::package::{PackageInfo, PackageManager};
+use typist_service::font_loader::FontLoader;
 use typist_service::template::{
     Template, TemplateCategory, TemplateEngine as TypistTemplateEngine, TemplateMetadataUpdate,
 };
@@ -208,6 +209,10 @@ static PACKAGE_MANAGER: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<PackageMana
             PackageManager::with_default_config(),
         ))
     });
+
+// Global font loader instance
+static FONT_LOADER: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<FontLoader>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(tokio::sync::Mutex::new(FontLoader::new())));
 
 // Global template engine instance
 static TEMPLATE_ENGINE: once_cell::sync::Lazy<Arc<tokio::sync::Mutex<TypistTemplateEngine>>> =
@@ -992,6 +997,17 @@ async fn get_tiptap_config(preset: Option<String>) -> Result<String, String> {
     serde_json::to_string(&config).map_err(|e| format!("Failed to serialize config: {}", e))
 }
 
+// SVG diff command for incremental updates
+#[tauri::command]
+async fn diff_svg(old_svg: String, new_svg: String) -> Result<String, String> {
+    use svg_service::SvgDiffer;
+    
+    let differ = SvgDiffer::new();
+    let result = differ.diff(&old_svg, &new_svg);
+    
+    serde_json::to_string(&result).map_err(|e| format!("Failed to serialize diff result: {}", e))
+}
+
 // List available TipTap presets
 #[tauri::command]
 async fn list_tiptap_presets() -> Result<Vec<String>, String> {
@@ -1608,7 +1624,7 @@ async fn get_ocr_languages() -> Result<Vec<String>, String> {
 #[tauri::command]
 async fn update_ocr_config(config: OcrConfig) -> Result<(), String> {
     let mut engine = OCR_ENGINE.lock().await;
-    engine.update_config(config);
+    let _ = engine.update_config(config);
     Ok(())
 }
 
@@ -1755,7 +1771,7 @@ async fn announce_to_screen_reader(message: String, priority: String) -> Result<
         _ => return Err(format!("Invalid priority: {}", priority)),
     };
 
-    announcer.announce(message, priority_enum);
+    let _ = announcer.announce(message, priority_enum);
     Ok(())
 }
 
@@ -1769,7 +1785,7 @@ async fn get_screen_reader_announcements(
 #[tauri::command]
 async fn clear_screen_reader_announcements() -> Result<(), String> {
     let announcer = SCREEN_READER_ANNOUNCER.lock().await;
-    announcer.clear();
+    let _ = announcer.clear();
     Ok(())
 }
 
@@ -1889,6 +1905,65 @@ async fn check_package_dependencies(name: String) -> Result<Vec<String>, String>
 async fn get_package_stats() -> Result<typist_service::package::PackageStats, String> {
     let manager = PACKAGE_MANAGER.lock().await;
     Ok(manager.get_stats())
+}
+
+// Font commands
+#[derive(serde::Serialize)]
+struct FontInfo {
+    name: String,
+    family: String,
+    style: String,
+    weight: u16,
+    is_italic: bool,
+    is_monospace: bool,
+}
+
+#[tauri::command]
+async fn get_system_fonts() -> Result<Vec<FontInfo>, String> {
+    let loader = FONT_LOADER.lock().await;
+    let font_infos = loader.get_font_infos();
+    use typst::text::FontStyle;
+    Ok(font_infos
+        .into_iter()
+        .map(|info| {
+            let is_italic = matches!(info.variant.style, FontStyle::Italic | FontStyle::Oblique);
+            let weight = info.variant.weight.0;
+            let style = if is_italic {
+                if weight >= 700 { "Bold Italic".to_string() } else { "Italic".to_string() }
+            } else if weight >= 700 {
+                "Bold".to_string()
+            } else {
+                "Regular".to_string()
+            };
+            FontInfo {
+                name: info.family.clone(),
+                family: info.family,
+                style,
+                weight,
+                is_italic,
+                is_monospace: info.flags.contains(typst::text::FontFlags::MONOSPACE),
+            }
+        })
+        .collect())
+}
+
+#[tauri::command]
+async fn upload_font(file_name: String, file_data: Vec<u8>) -> Result<String, String> {
+    let font_dir = std::path::PathBuf::from(".typst_fonts");
+    std::fs::create_dir_all(&font_dir).map_err(|e| e.to_string())?;
+    let file_path = font_dir.join(&file_name);
+    std::fs::write(&file_path, file_data).map_err(|e| e.to_string())?;
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn delete_font(file_name: String) -> Result<(), String> {
+    let font_dir = std::path::PathBuf::from(".typst_fonts");
+    let file_path = font_dir.join(&file_name);
+    if file_path.exists() {
+        std::fs::remove_file(&file_path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 // Voice commands
@@ -2893,6 +2968,9 @@ pub fn run() {
             add_package_to_cache,
             check_package_dependencies,
             get_package_stats,
+            get_system_fonts,
+            upload_font,
+            delete_font,
             render_typst,
             check_typst_availability,
             update_macro,
@@ -3007,7 +3085,9 @@ pub fn run() {
             download_typist_template,
             rate_typist_template,
             load_typist_templates_from_directory,
-            save_typist_template_to_file
+            save_typist_template_to_file,
+            // SVG diff commands
+            diff_svg
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

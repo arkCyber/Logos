@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import RibbonToolbar from '../RibbonToolbar.vue';
 
@@ -381,8 +381,8 @@ describe('RibbonToolbar Component', () => {
         props: {
           activeTab: 'file',
           fontFamily: 'Calibri, "Microsoft YaHei", "微软雅黑", "Segoe UI", sans-serif',
-          fontSize: 12,
-        },
+          fontSize: 12
+        }
       });
 
       expect(wrapper.text()).toContain('Export SVG (Typst)');
@@ -394,8 +394,8 @@ describe('RibbonToolbar Component', () => {
         props: {
           activeTab: 'file',
           fontFamily: 'Calibri, "Microsoft YaHei", "微软雅黑", "Segoe UI", sans-serif',
-          fontSize: 12,
-        },
+          fontSize: 12
+        }
       });
 
       const button = wrapper.find('button[aria-label="Export SVG Typst"]');
@@ -408,8 +408,8 @@ describe('RibbonToolbar Component', () => {
         props: {
           activeTab: 'file',
           fontFamily: 'Calibri, "Microsoft YaHei", "微软雅黑", "Segoe UI", sans-serif',
-          fontSize: 12,
-        },
+          fontSize: 12
+        }
       });
 
       const button = wrapper.find('button[aria-label="Export SVG HTML"]');

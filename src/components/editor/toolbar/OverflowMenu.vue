@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ref } from 'vue';
 
 interface Props {
   show: boolean;
@@ -18,7 +17,7 @@ interface Emits {
   (e: 'translate-text'): void;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 const closeMenu = () => {

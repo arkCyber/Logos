@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import QuickAccessToolbar from '../QuickAccessToolbar.vue';
 
@@ -16,6 +16,26 @@ describe('QuickAccessToolbar Component', () => {
   });
 
   describe('Common Actions', () => {
+    it('should render file backstage button', () => {
+      const wrapper = mount(QuickAccessToolbar, {
+        props: {
+          showFileBackstage: false,
+          documentTitle: 'Test Document'
+        }
+      });
+      expect(wrapper.find('[data-testid="qat-file-button"]').exists()).toBe(true);
+    });
+
+    it('should mark file button active when backstage is open', () => {
+      const wrapper = mount(QuickAccessToolbar, {
+        props: {
+          showFileBackstage: true,
+          documentTitle: 'Test Document'
+        }
+      });
+      expect(wrapper.find('[data-testid="qat-file-button"].is-active').exists()).toBe(true);
+    });
+
     it('should render save button', () => {
       const wrapper = mount(QuickAccessToolbar, {
         props: {
@@ -48,6 +68,17 @@ describe('QuickAccessToolbar Component', () => {
   });
 
   describe('Event Emission', () => {
+    it('should emit toggle-file-backstage when file button is clicked', async () => {
+      const wrapper = mount(QuickAccessToolbar, {
+        props: {
+          showFileBackstage: false,
+          documentTitle: 'Test Document'
+        }
+      });
+      await wrapper.find('[data-testid="qat-file-button"]').trigger('click');
+      expect(wrapper.emitted('toggle-file-backstage')).toBeTruthy();
+    });
+
     it('should emit save event when save button is clicked', async () => {
       const wrapper = mount(QuickAccessToolbar, {
         props: {

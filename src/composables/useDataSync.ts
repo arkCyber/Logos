@@ -9,6 +9,7 @@
  */
 
 import { ref, watch, onMounted, onUnmounted } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { invoke } from '@tauri-apps/api/core'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { Editor } from '@tiptap/vue-3';
 import { logger, LogCategory } from '../utils/logger';
 import { htmlToTypst } from '../utils/translator';
@@ -156,19 +157,17 @@ return {};
 
       // 转换HTML为Typst
       const typstCode = htmlToTypst(content);
-      
-      // TODO: 调用后端微服务进行编译
-      // const pdfData = await invoke('compile_typst', { 
-      //   code: typstCode,
-      //   options: {
-      //     format: 'pdf',
-      //     quality: 'high'
-      //   }
-      // });
-      
-      // 临时：模拟编译成功
-      await new Promise(resolve => setTimeout(resolve, 500));
-      const pdfData = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // PDF magic number
+
+      // 调用后端编译
+      const b64Pdf: string = await invoke<string>('compile_typst', { code: typstCode });
+
+      // 解析 data URL
+      const pdfBase64 = b64Pdf.replace(/^data:application\/pdf;base64,/, '');
+      const binaryStr = atob(pdfBase64);
+      const pdfData = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        pdfData[i] = binaryStr.charCodeAt(i);
+      }
       
       const compileTime = Date.now() - startTime;
       

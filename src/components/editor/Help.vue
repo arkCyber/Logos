@@ -10,7 +10,7 @@ interface Emits {
   (e: 'close'): void;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 const activeTab = ref<'shortcuts' | 'about' | 'feedback'>('shortcuts');

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BaseDialog from '../BaseDialog.vue';
@@ -7,7 +7,6 @@ describe('BaseDialog', () => {
   let wrapper: any;
 
   beforeEach(() => {
-    vi.useFakeTimers();
     wrapper = mount(BaseDialog, {
       props: {
         show: false,
@@ -18,8 +17,6 @@ describe('BaseDialog', () => {
   });
 
   afterEach(() => {
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
     wrapper?.unmount();
   });
 
@@ -50,7 +47,7 @@ describe('BaseDialog', () => {
     if (closeButton) {
       closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await nextTick();
-      vi.advanceTimersByTime(150); // Advance past the setTimeout
+      await new Promise(resolve => setTimeout(resolve, 200)); // Wait for animation
       expect(wrapper.emitted('update:show')).toBeTruthy();
       expect(wrapper.emitted('update:show')![0]).toEqual([false]);
     }
@@ -64,7 +61,7 @@ describe('BaseDialog', () => {
     if (mask) {
       mask.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await nextTick();
-      vi.advanceTimersByTime(150); // Advance past the setTimeout
+      await new Promise(resolve => setTimeout(resolve, 200)); // Wait for animation
       expect(wrapper.emitted('update:show')).toBeTruthy();
     }
   });
@@ -86,7 +83,7 @@ describe('BaseDialog', () => {
     await nextTick(); // Wait for Teleport
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     await nextTick();
-    vi.advanceTimersByTime(150); // Advance past the setTimeout
+    await new Promise(resolve => setTimeout(resolve, 200)); // Wait for animation
     expect(wrapper.emitted('update:show')).toBeTruthy();
   });
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import WallpaperSelector from '../WallpaperSelector.vue';
 
 interface Message {
@@ -26,25 +26,7 @@ const messages = ref<Message[]>([
 
 const inputMessage = ref('');
 const isTyping = ref(false);
-const selectedWallpaper = ref<string | null>('/sascha-roder-zb3r_kTcVbU-unsplash.jpg');
-
-// 墙纸样式计算
-const wallpaperStyle = computed(() => {
-  if (selectedWallpaper.value) {
-    const isDataUrl = selectedWallpaper.value.startsWith('data:');
-    const imagePath = isDataUrl ? selectedWallpaper.value : selectedWallpaper.value;
-    return {
-      backgroundImage: `url('${imagePath}')`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
-      backgroundAttachment: 'fixed'
-    };
-  }
-  return {
-    backgroundImage: 'none'
-  };
-});
+const selectedWallpaper = ref<string | null>(null);
 
 const sendMessage = () => {
   if (!inputMessage.value.trim()) {
@@ -117,7 +99,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="ai-sidebar editor-side-panel editor-side-panel--right" :style="wallpaperStyle">
+  <div class="ai-sidebar editor-side-panel editor-side-panel--right">
     <div class="ai-sidebar-header">
       <div class="ai-header-title">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -127,6 +109,7 @@ onMounted(() => {
       </div>
       <div class="ai-header-actions">
         <WallpaperSelector
+          :show="false"
           @select="selectWallpaper"
           @error="handleWallpaperError"
         />
@@ -202,25 +185,13 @@ onMounted(() => {
   position: relative;
 }
 
-.ai-sidebar::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.85);
-  pointer-events: none;
-  z-index: 0;
-}
-
 .ai-sidebar-header {
   position: relative;
   z-index: 1;
   padding: 12px 16px;
   border-bottom: 1px solid rgba(229, 231, 235, 0.8);
-  background: rgba(249, 250, 251, 0.9);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -269,8 +240,12 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.40);
   backdrop-filter: blur(4px);
+  background-image: url('/sascha-roder-zb3r_kTcVbU-unsplash.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .ai-sidebar-messages::-webkit-scrollbar {
@@ -368,8 +343,8 @@ onMounted(() => {
   border-top: 1px solid rgba(229, 231, 235, 0.8);
   display: flex;
   gap: 8px;
-  background: rgba(249, 250, 251, 0.9);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(5px);
   flex-shrink: 0;
 }
 

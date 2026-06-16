@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { ref, computed, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { logger, LogCategory } from '../utils/logger';
-import { debounce } from '../utils/debounce';
 import { auditLogger, AuditAction } from '../utils/auditLogger';
 
 interface TypstFont {
@@ -131,11 +130,6 @@ function setupKeyboardShortcuts() {
   };
 }
 
-// 防抖搜索
-const debouncedSearch = debounce((query: string) => { // eslint-disable-line @typescript-eslint/no-unused-vars
-  searchQuery.value = query;
-}, 300);
-
 // 验证字体数据
 function validateFont(font: any): font is TypstFont {
   return (
@@ -181,61 +175,20 @@ async function loadFonts() {
   isLoading.value = true;
   errorMessage.value = '';
   try {
-    // TODO: 调用后端API获取字体列表
-    // const rawData = await invoke('get_typst_fonts');
-    // fonts.value = rawData.filter(validateFont);
-    
-    // 临时：模拟数据
-    const mockData = [
-      {
-        name: 'Arial',
-        family: 'Arial',
-        style: 'Regular',
-        weight: 400,
-        path: '/System/Library/Fonts/Arial.ttf',
-        size: 256000,
-        isSystem: true,
-        previewText: 'The quick brown fox jumps over the lazy dog.',
-        categories: ['sans-serif', 'system']
-      },
-      {
-        name: 'Times New Roman',
-        family: 'Times New Roman',
-        style: 'Regular',
-        weight: 400,
-        path: '/System/Library/Fonts/Times.ttf',
-        size: 289000,
-        isSystem: true,
-        previewText: 'The quick brown fox jumps over the lazy dog.',
-        categories: ['serif', 'system']
-      },
-      {
-        name: 'Roboto',
-        family: 'Roboto',
-        style: 'Regular',
-        weight: 400,
-        path: '/Users/arksong/.local/share/fonts/Roboto.ttf',
-        size: 312000,
-        isSystem: false,
-        previewText: 'The quick brown fox jumps over the lazy dog.',
-        categories: ['sans-serif', 'user']
-      },
-      {
-        name: 'Noto Sans CJK',
-        family: 'Noto Sans CJK',
-        style: 'Regular',
-        weight: 400,
-        path: '/Users/arksong/.local/share/fonts/NotoSansCJK.ttf',
-        size: 15000000,
-        isSystem: false,
-        previewText: 'The quick brown fox jumps over the lazy dog. 快速的棕色狐狸跳过懒惰的狗。',
-        categories: ['sans-serif', 'user', 'cjk']
-      }
-    ];
-    
-    // 验证数据
-    fonts.value = mockData.filter(validateFont);
-    
+    const rawFonts = await invoke<any[]>('get_system_fonts');
+
+    fonts.value = (rawFonts || []).map((f: any) => ({
+      name: f.name || f.family || 'Unknown',
+      family: f.family || 'Unknown',
+      style: f.style || 'Regular',
+      weight: typeof f.weight === 'number' ? f.weight : 400,
+      path: '',
+      size: 0,
+      isSystem: true,
+      previewText: 'The quick brown fox jumps over the lazy dog.',
+      categories: []
+    })).filter(validateFont);
+
     logger.info('Typst fonts loaded', { count: fonts.value.length }, LogCategory.BUSINESS);
     auditLogger.log(AuditAction.REFRESH, { count: fonts.value.length }, true);
   } catch (error) {
@@ -278,8 +231,9 @@ async function uploadFont(file: File) {
   errorMessage.value = '';
   
   try {
-    // TODO: 调用后端API上传字体
-    // await invoke('upload_typst_font', { file });
+    const fileBuffer = await file.arrayBuffer();
+    const fileData = Array.from(new Uint8Array(fileBuffer));
+    await invoke<string>('upload_font', { fileName: file.name, fileData });
     
     successMessage.value = `字体 ${escapeHtml(file.name)} 上传成功`;
     logger.info('Font uploaded', { name: file.name, size: file.size }, LogCategory.BUSINESS);
@@ -315,8 +269,7 @@ return;
   isDeleting.value = true;
   
   try {
-    // TODO: 调用后端API删除字体
-    // await invoke('delete_typst_font', { name: font.name });
+    await invoke('delete_font', { fileName: font.name });
     
     successMessage.value = `字体 ${escapeHtml(font.name)} 删除成功`;
     logger.info('Font deleted', { name: font.name }, LogCategory.BUSINESS);
@@ -436,23 +389,36 @@ return (bytes / 1024).toFixed(1) + ' KB';
 }
 
 function getWeightLabel(weight: number): string {
-  if (weight < 300) {
-return 'Light';
-}
-  if (weight < 400) {
-return 'Regular';
-}
-  if (weight < 500) {
-return 'Medium';
-}
-  if (weight < 600) {
-return 'SemiBold';
-}
-  if (weight < 700) {
-return 'Bold';
-}
+  if (weight <= 300) {
+    return 'Light';
+  }
+  if (weight <= 400) {
+    return 'Regular';
+  }
+  if (weight <= 500) {
+    return 'Medium';
+  }
+  if (weight <= 600) {
+    return 'SemiBold';
+  }
+  if (weight <= 700) {
+    return 'Bold';
+  }
   return 'ExtraBold';
 }
+
+defineExpose({
+  errorMessage,
+  successMessage,
+  isLoading,
+  searchQuery,
+  showPreviewDialog,
+  showUploadDialog,
+  isUploading,
+  selectedFont,
+  formatSize,
+  getWeightLabel
+});
 </script>
 
 <template>

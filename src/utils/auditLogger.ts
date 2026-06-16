@@ -30,6 +30,15 @@ export interface AuditLogEntry {
 class AuditLogger {
   private logs: AuditLogEntry[] = [];
   private maxLogs = 1000; // Keep last 1000 logs in memory
+  private sessionId: string = this.generateSessionId();
+
+  private generateSessionId(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
 
   /**
    * Log an audit event
@@ -106,12 +115,10 @@ class AuditLogger {
   }
 
   /**
-   * Get current user ID (placeholder for actual implementation)
+   * Get current user/session ID
    */
   private getCurrentUserId(): string | undefined {
-    // TODO: Implement actual user ID retrieval
-    // This would typically come from authentication context
-    return undefined;
+    return this.sessionId;
   }
 }
 

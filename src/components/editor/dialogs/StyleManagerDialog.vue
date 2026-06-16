@@ -32,7 +32,7 @@ interface StyleDefinition {
   };
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 // Tab state

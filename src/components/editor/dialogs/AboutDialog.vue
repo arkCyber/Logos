@@ -10,7 +10,7 @@ interface Emits {
   (e: 'update:show', value: boolean): void;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 const appVersion = ref('1.0.0');

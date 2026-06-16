@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'; // eslint-disable-line @typescript-eslint/no-unused-vars
+import { ref, computed, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import { logger, LogCategory } from '../utils/logger';
-import { debounce } from '../utils/debounce';
 import { auditLogger, AuditAction } from '../utils/auditLogger';
 
 interface TypstPackage {
@@ -122,11 +121,6 @@ function setupKeyboardShortcuts() {
   };
 }
 
-// 防抖搜索
-const debouncedSearch = debounce((query: string) => { // eslint-disable-line @typescript-eslint/no-unused-vars
-  searchQuery.value = query;
-}, 300);
-
 // 验证包数据
 function validatePackage(pkg: any): pkg is TypstPackage {
   return (
@@ -160,75 +154,36 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
-// 验证URL
-function _isValidUrl(url: string): boolean { // eslint-disable-line @typescript-eslint/no-unused-vars
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function loadPackages() {
   isLoading.value = true;
   errorMessage.value = '';
   try {
-    // TODO: 调用后端API获取包列表
-    // const rawData = await invoke('get_typst_packages');
-    // packages.value = rawData.filter(validatePackage);
-    
-    // 临时：模拟数据
-    const mockData = [
-      {
-        name: 'typst-cite',
-        version: '0.1.0',
-        description: 'Citations and bibliography for Typst',
-        author: 'Typst Authors',
-        license: 'MIT',
-        homepage: 'https://typst.app',
-        repository: 'https://github.com/typst/packages',
-        keywords: ['bibliography', 'citations', 'academic'],
-        installed: false,
-        dependencies: [],
-        downloads: 1250,
-        rating: 4.5
-      },
-      {
-        name: 'typst-math',
-        version: '0.2.0',
-        description: 'Advanced mathematical formulas',
-        author: 'Math Team',
-        license: 'Apache-2.0',
-        homepage: 'https://typst.app',
-        repository: 'https://github.com/typst/packages',
-        keywords: ['math', 'formulas', 'scientific'],
-        installed: true,
-        installedVersion: '0.1.5',
-        dependencies: [],
-        downloads: 3400,
-        rating: 4.8
-      },
-      {
-        name: 'typst-code',
-        version: '0.3.0',
-        description: 'Code highlighting and formatting',
-        author: 'Code Team',
-        license: 'MIT',
-        homepage: 'https://typst.app',
-        repository: 'https://github.com/typst/packages',
-        keywords: ['code', 'syntax', 'programming'],
-        installed: false,
-        dependencies: [],
-        downloads: 890,
-        rating: 4.2
-      }
-    ];
-    
-    // 验证数据
-    packages.value = mockData.filter(validatePackage);
-    
-    logger.info('Typst packages loaded', { count: packages.value.length }, LogCategory.BUSINESS);
+    // 优先加载已安装的包，再加载可用包列表
+    const [installed, available] = await Promise.all([
+      invoke<any[]>('list_installed_packages'),
+      invoke<any[]>('list_available_packages')
+    ]);
+
+    // 合并两个列表，已安装的标记为 installed: true
+    const installedNames = new Set((installed || []).map((p: any) => p.name));
+    const availablePackages: any[] = (available || []).map((p: any) => ({
+      name: p.name || '',
+      version: p.version || '',
+      description: p.description || '',
+      author: p.author || '',
+      license: p.license || '',
+      homepage: p.homepage || '',
+      repository: p.repository || '',
+      keywords: Array.isArray(p.keywords) ? p.keywords : [],
+      installed: installedNames.has(p.name),
+      installedVersion: installedNames.has(p.name) ? (installed.find((i: any) => i.name === p.name)?.version || p.version) : undefined,
+      dependencies: Object.keys(p.dependencies || {}),
+      downloads: typeof p.downloads === 'number' ? p.downloads : 0,
+      rating: 0
+    }));
+
+    packages.value = availablePackages.filter(validatePackage);
+    logger.info('Typst packages loaded', { count: packages.value.length, installed: installed?.length ?? 0 }, LogCategory.BUSINESS);
     auditLogger.log(AuditAction.REFRESH, { count: packages.value.length }, true);
   } catch (error) {
     const errorMsg = '加载包列表失败';
@@ -249,8 +204,7 @@ return;
   isInstalling.value = true;
   
   try {
-    // TODO: 调用后端API安装包
-    // await invoke('install_typst_package', { name: pkg.name, version: pkg.version });
+    await invoke('install_package', { name: pkg.name, version: pkg.version || null });
     
     pkg.installed = true;
     pkg.installedVersion = pkg.version;
@@ -282,8 +236,7 @@ return;
   isUninstalling.value = true;
   
   try {
-    // TODO: 调用后端API卸载包
-    // await invoke('uninstall_typst_package', { name: pkg.name });
+    await invoke('uninstall_package', { name: pkg.name });
     
     pkg.installed = false;
     pkg.installedVersion = undefined;
@@ -315,8 +268,7 @@ return;
   isUpdating.value = true;
   
   try {
-    // TODO: 调用后端API更新包
-    // await invoke('update_typst_package', { name: pkg.name });
+    await invoke('update_package', { name: pkg.name });
     
     pkg.installedVersion = pkg.version;
     successMessage.value = `包 ${escapeHtml(pkg.name)} 更新成功`;
@@ -441,6 +393,14 @@ stars += '⭐';
 }
   return stars || '暂无评分';
 }
+
+defineExpose({
+  errorMessage,
+  successMessage,
+  isLoading,
+  searchQuery,
+  showDetailsDialog
+});
 </script>
 
 <template>

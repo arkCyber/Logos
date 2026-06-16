@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import StatusBar from '../StatusBar.vue';
 
@@ -29,6 +29,38 @@ describe('StatusBar Component', () => {
       });
       
       expect(wrapper.text()).toContain('页 1 / 5');
+      expect(wrapper.find('.page-navigation').exists()).toBe(true);
+    });
+
+    it('should emit page navigation events', async () => {
+      const wrapper = mount(StatusBar, {
+        props: {
+          ...defaultProps,
+          currentPage: 2,
+          totalPages: 5
+        }
+      });
+
+      const buttons = wrapper.findAll('.page-nav-btn');
+      await buttons[0].trigger('click');
+      expect(wrapper.emitted('page-previous')).toBeTruthy();
+
+      await buttons[1].trigger('click');
+      expect(wrapper.emitted('page-next')).toBeTruthy();
+    });
+
+    it('should disable page navigation at boundaries', () => {
+      const wrapper = mount(StatusBar, {
+        props: {
+          ...defaultProps,
+          currentPage: 1,
+          totalPages: 3
+        }
+      });
+
+      const buttons = wrapper.findAll('.page-nav-btn');
+      expect(buttons[0].attributes('disabled')).toBeDefined();
+      expect(buttons[1].attributes('disabled')).toBeUndefined();
     });
 
     it('should display word count', () => {
